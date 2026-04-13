@@ -1,1 +1,1 @@
-"""Utility helpers used across the app."""
+"""Utilities package."""

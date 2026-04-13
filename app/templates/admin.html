@@ -1,0 +1,520 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Admin Panel</title>
+    <link rel="stylesheet" href="/static/style.css" />
+</head>
+<body>
+<main class="container">
+    <h1>Admin Panel</h1>
+    <p>Admin-only controls for operations, billing, users, and diagnostics.</p>
+    <p><a href="/">Back to home</a></p>
+
+    <section class="card">
+        <h2>Per-document tiered billing &amp; transparency</h2>
+        <p class="status">Charges are per <strong>classified document</strong>. Price decreases as monthly volume increases. OCR documents are billed at the full tier price. Non-OCR documents are billed at the tier price minus the Google Document AI charge (since Document AI is not used). Both count toward monthly volume for tier determination.</p>
+        <form id="billingPricingForm" class="auth-block">
+            <label for="bpGoogleUsd">Google USD per classified document</label>
+            <input id="bpGoogleUsd" type="number" step="0.0001" min="0" required />
+            <label for="bpMarginUsd">Our margin USD per document (e.g. 0.05)</label>
+            <input id="bpMarginUsd" type="number" step="0.0001" min="0" required />
+            <label for="bpUsdToZar">USD &rarr; ZAR rate (for customer charges)</label>
+            <input id="bpUsdToZar" type="number" step="0.0001" min="0" required />
+            <label for="bpInfraUsd">Monthly infrastructure cost (USD, e.g. 9.30 &mdash; shown in transparency)</label>
+            <input id="bpInfraUsd" type="number" step="0.01" min="0" required />
+            <h3>Volume tier brackets</h3>
+            <p class="status" style="font-size:0.9rem;">
+                Each bracket: <code>{"min_docs": N, "max_docs": N|null, "price_usd": X.XX}</code>.
+                Use <code>null</code> for <code>max_docs</code> on the last bracket (1001+).
+                Price is the all-in per-document charge in USD for that volume range.
+            </p>
+            <label for="bpTierBracketsJson">Tier brackets (JSON array)</label>
+            <textarea id="bpTierBracketsJson" rows="14" style="font-family:monospace;font-size:0.85rem;"></textarea>
+            <label for="bpEffectiveDate">Prices as of (ISO date)</label>
+            <input id="bpEffectiveDate" type="text" placeholder="2026-04-10" />
+            <label for="bpTransparencyScopeNote">Platform estimate scope note (shown above the platform cost table on the billing page)</label>
+            <textarea id="bpTransparencyScopeNote" rows="4"></textarea>
+            <label for="bpProcessorNote">Document AI / processor limits note (optional)</label>
+            <textarea id="bpProcessorNote" rows="3"></textarea>
+            <h3>Notices (billing page)</h3>
+            <label for="bpNoticeNonProfit">Non-profit intent</label>
+            <textarea id="bpNoticeNonProfit" rows="3"></textarea>
+            <label for="bpNoticeEarly">Early product</label>
+            <textarea id="bpNoticeEarly" rows="3"></textarea>
+            <label for="bpNoticeFuture">Future pricing</label>
+            <textarea id="bpNoticeFuture" rows="3"></textarea>
+            <label for="bpNoticeTemporary">Temporary until launch</label>
+            <textarea id="bpNoticeTemporary" rows="3"></textarea>
+            <label for="bpNoticeAccuracy">Accuracy / FX disclaimer</label>
+            <textarea id="bpNoticeAccuracy" rows="3"></textarea>
+            <label for="bpLineItemsJson">Platform cost line items (JSON array)</label>
+            <p class="status" style="font-size:0.9rem;">
+                Each object may include optional <code>estimate_limits</code>: an array of
+                <code>{ "label": "…", "value": "…" }</code> pairs (copy labels/values from the Google Cloud Pricing Calculator export).
+                Existing fields stay the same: <code>service</code>, <code>sku</code>, <code>quantity</code>,
+                <code>quantity_unit</code>, <code>region</code>, <code>monthly_usd</code>, <code>notes</code>, <code>doc_url</code>.
+            </p>
+            <textarea id="bpLineItemsJson" rows="12" style="font-family:monospace;font-size:0.85rem;"></textarea>
+            <button type="submit">Save billing &amp; transparency</button>
+            <p id="billingPricingStatus" class="status"></p>
+        </form>
+    </section>
+
+    <section class="card">
+        <h2>Usage Reports</h2>
+        <div class="button-row">
+            <a href="/admin/export?kind=users" id="exportUsers" target="_blank">Download users CSV</a>
+            <a href="/admin/export?kind=orgs" id="exportOrgs" target="_blank">Download orgs CSV</a>
+            <a href="/admin/export?kind=events" id="exportEvents" target="_blank">Download events CSV</a>
+        </div>
+        <p id="usageSummary" class="status"></p>
+    </section>
+
+    <section class="card">
+        <h2>Cost Reconciliation</h2>
+        <p id="reconAlert" class="status"></p>
+        <div class="metric-grid">
+            <p class="metric-item"><strong>App estimate (MTD)</strong><span id="reconAppMtd">R0.00</span></p>
+            <p class="metric-item"><strong>Financial truth (MTD)</strong><span id="reconTruthMtd">R0.00</span></p>
+            <p class="metric-item"><strong>Variance (MTD)</strong><span id="reconVarMtd">R0.00</span></p>
+            <p class="metric-item"><strong>Variance % (MTD)</strong><span id="reconVarPctMtd">0%</span></p>
+        </div>
+        <div class="button-row">
+            <button id="runReconBtn" type="button">Run reconciliation now</button>
+        </div>
+        <div style="overflow:auto;">
+            <table class="billing-table">
+                <thead>
+                <tr><th>Date</th><th>App estimate</th><th>Financial truth</th><th>Variance</th><th>Variance %</th><th>Status</th></tr>
+                </thead>
+                <tbody id="reconBody"></tbody>
+            </table>
+        </div>
+    </section>
+
+    <section class="card">
+        <h2>Organizations</h2>
+        <form id="orgForm" class="auth-block">
+            <label for="orgName">Organization name</label>
+            <input id="orgName" type="text" />
+            <label for="orgDomains">Domains (comma-separated)</label>
+            <input id="orgDomains" type="text" placeholder="acme.com,sub.acme.com" />
+            <button type="submit">Create organization</button>
+            <p id="orgStatus" class="status"></p>
+        </form>
+    </section>
+
+    <section class="card">
+        <h2>Pending Signup Requests</h2>
+        <div style="overflow:auto;">
+            <table class="billing-table">
+                <thead>
+                <tr><th>Email</th><th>Name</th><th>Organization</th><th>How heard</th><th>Suggested Org</th><th>Actions</th></tr>
+                </thead>
+                <tbody id="requestsBody"></tbody>
+            </table>
+        </div>
+    </section>
+
+    <section class="card">
+        <h2>Users</h2>
+        <div style="overflow:auto;">
+            <table class="billing-table">
+                <thead>
+                <tr><th>Email</th><th>Status</th><th>Credits</th><th>Org</th><th>Actions</th></tr>
+                </thead>
+                <tbody id="usersBody"></tbody>
+            </table>
+        </div>
+    </section>
+
+    <section class="card">
+        <h2>Error Tracking</h2>
+        <div style="overflow:auto;">
+            <table class="billing-table">
+                <thead>
+                <tr><th>Date & time</th><th>Event</th><th>Path</th><th>Details</th></tr>
+                </thead>
+                <tbody id="errorsBody"></tbody>
+            </table>
+        </div>
+    </section>
+</main>
+<script>
+    (async function () {
+        const ADMIN_CACHE_KEY = "adminDataCacheV1";
+        const ADMIN_CACHE_TTL_MS = 60000;
+        const token = sessionStorage.getItem("idToken") || localStorage.getItem("idToken");
+        const billingPricingStatus = document.getElementById("billingPricingStatus");
+        const usersBody = document.getElementById("usersBody");
+        const requestsBody = document.getElementById("requestsBody");
+        const errorsBody = document.getElementById("errorsBody");
+        const usageSummary = document.getElementById("usageSummary");
+        const orgStatus = document.getElementById("orgStatus");
+        const reconAlert = document.getElementById("reconAlert");
+        const reconAppMtd = document.getElementById("reconAppMtd");
+        const reconTruthMtd = document.getElementById("reconTruthMtd");
+        const reconVarMtd = document.getElementById("reconVarMtd");
+        const reconVarPctMtd = document.getElementById("reconVarPctMtd");
+        const reconBody = document.getElementById("reconBody");
+
+        function getCookie(name) {
+            const target = name + "=";
+            const parts = document.cookie ? document.cookie.split(";") : [];
+            for (const part of parts) {
+                const trimmed = part.trim();
+                if (trimmed.startsWith(target)) return decodeURIComponent(trimmed.substring(target.length));
+            }
+            return "";
+        }
+
+        async function authFetch(url, options) {
+            const opts = Object.assign({ credentials: "same-origin" }, options || {});
+            opts.headers = Object.assign({}, (options && options.headers) || {});
+            let resp = await fetch(url, opts);
+            if ((resp.status === 401 || resp.status === 403) && token) {
+                opts.headers.Authorization = "Bearer " + token;
+                resp = await fetch(url, opts);
+            }
+            return resp;
+        }
+
+        async function authFetchWithCsrf(url, options) {
+            const csrfToken = getCookie("csrf_token");
+            const opts = Object.assign({}, options || {});
+            opts.headers = Object.assign({}, (options && options.headers) || {});
+            if (csrfToken) {
+                opts.headers["X-CSRF-Token"] = csrfToken;
+            }
+            return authFetch(url, opts);
+        }
+
+        async function callJson(url, method, body) {
+            const isMutation = (method || "GET").toUpperCase() !== "GET";
+            const fetcher = isMutation ? authFetchWithCsrf : authFetch;
+            const resp = await fetcher(url, {
+                method: method || "GET",
+                headers: body ? { "Content-Type": "application/json" } : undefined,
+                body: body ? JSON.stringify(body) : undefined,
+            });
+            if (!resp.ok) {
+                if (resp.status === 401 || resp.status === 403) {
+                    window.location.href = "/";
+                }
+                throw new Error(await resp.text());
+            }
+            return resp.json();
+        }
+
+        function formatRand(value) {
+            return new Intl.NumberFormat("en-ZA", {
+                style: "currency",
+                currency: "ZAR",
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2,
+            }).format(Number(value || 0));
+        }
+
+        function readAdminCache() {
+            try {
+                const raw = sessionStorage.getItem(ADMIN_CACHE_KEY);
+                if (!raw) return null;
+                const parsed = JSON.parse(raw);
+                const age = Date.now() - Number(parsed.cachedAt || 0);
+                if (age > ADMIN_CACHE_TTL_MS) return null;
+                return parsed.payload || null;
+            } catch (_err) {
+                return null;
+            }
+        }
+
+        function writeAdminCache(payload) {
+            try {
+                sessionStorage.setItem(
+                    ADMIN_CACHE_KEY,
+                    JSON.stringify({ cachedAt: Date.now(), payload: payload })
+                );
+            } catch (_err) {
+                // ignore storage errors
+            }
+        }
+
+        function clearAdminCache() {
+            sessionStorage.removeItem(ADMIN_CACHE_KEY);
+        }
+
+        function renderReconciliation(recon) {
+            const summary = (recon || {}).summary || {};
+            reconAppMtd.textContent = formatRand(summary.app_estimate_mtd || 0);
+            reconTruthMtd.textContent = summary.financial_truth_mtd == null ? "Awaiting data" : formatRand(summary.financial_truth_mtd);
+            reconVarMtd.textContent = summary.variance_amount_mtd == null ? "Awaiting data" : formatRand(summary.variance_amount_mtd);
+            reconVarPctMtd.textContent = summary.variance_pct_mtd == null ? "n/a" : (Number(summary.variance_pct_mtd).toFixed(2) + "%");
+
+            if ((summary.status || "") === "warning") {
+                reconAlert.textContent = "Warning: daily/monthly reconciliation variance is above threshold.";
+            } else if ((summary.status || "") === "awaiting_data") {
+                reconAlert.textContent = "Financial truth data not available yet (billing export still ingesting).";
+            } else {
+                reconAlert.textContent = "Reconciliation status is healthy.";
+            }
+
+            reconBody.innerHTML = "";
+            const rows = (recon || {}).rows || [];
+            if (!rows.length) {
+                const tr = document.createElement("tr");
+                tr.innerHTML = "<td colspan='6' class='status'>No reconciliation data yet.</td>";
+                reconBody.appendChild(tr);
+                return;
+            }
+            rows.forEach(function (r) {
+                const tr = document.createElement("tr");
+                tr.innerHTML =
+                    "<td>" + (r.day || "-") + "</td>" +
+                    "<td>" + formatRand(r.app_estimate || 0) + "</td>" +
+                    "<td>" + (r.financial_truth == null ? "Awaiting data" : formatRand(r.financial_truth)) + "</td>" +
+                    "<td>" + formatRand(r.variance_amount || 0) + "</td>" +
+                    "<td>" + Number(r.variance_pct || 0).toFixed(2) + "%</td>" +
+                    "<td>" + (r.status || "-") + "</td>";
+                reconBody.appendChild(tr);
+            });
+        }
+
+        function addUserRow(user) {
+            const tr = document.createElement("tr");
+            tr.innerHTML =
+                "<td>" + (user.email || user.uid) + "</td>" +
+                "<td>" + (user.status || "active") + "</td>" +
+                "<td>" + Number(user.credits_balance || 0).toFixed(2) + "</td>" +
+                "<td>" + (user.org_id || "unassigned") + "</td>" +
+                "<td>" +
+                "<button data-action='approve' data-uid='" + user.uid + "'>Approve</button> " +
+                "<button data-action='revoke' data-uid='" + user.uid + "'>Revoke</button> " +
+                "<button data-action='credit' data-uid='" + user.uid + "'>+Credit</button> " +
+                "<button data-action='assign-org' data-uid='" + user.uid + "'>Assign org</button>" +
+                "</td>";
+            usersBody.appendChild(tr);
+        }
+
+        function applyData(data) {
+            const bp = data.billing_pricing || {};
+            document.getElementById("bpGoogleUsd").value = Number(bp.google_usd_per_classified_document ?? 0.75);
+            document.getElementById("bpMarginUsd").value = Number(bp.margin_per_document_usd ?? 0.05);
+            document.getElementById("bpUsdToZar").value = Number(bp.usd_to_zar ?? 18.5);
+            document.getElementById("bpInfraUsd").value = Number(bp.infra_monthly_usd ?? 9.30);
+            document.getElementById("bpTierBracketsJson").value = JSON.stringify(bp.tier_brackets || [], null, 2);
+            document.getElementById("bpEffectiveDate").value = bp.pricing_transparency_effective_date || "";
+            document.getElementById("bpTransparencyScopeNote").value = bp.transparency_estimate_scope_note || "";
+            document.getElementById("bpProcessorNote").value = bp.processor_limits_note || "";
+            document.getElementById("bpNoticeNonProfit").value = bp.notice_non_profit || "";
+            document.getElementById("bpNoticeEarly").value = bp.notice_early_product || "";
+            document.getElementById("bpNoticeFuture").value = bp.notice_future_pricing || "";
+            document.getElementById("bpNoticeTemporary").value = bp.notice_temporary || "";
+            document.getElementById("bpNoticeAccuracy").value = bp.notice_accuracy || "";
+            try {
+                document.getElementById("bpLineItemsJson").value = JSON.stringify(bp.pricing_transparency_line_items || [], null, 2);
+            } catch (_e) {
+                document.getElementById("bpLineItemsJson").value = "[]";
+            }
+            const summary = data.usage_summary || data.report || {};
+            const byUser = ((summary.by_user || []).length);
+            const byOrg = ((summary.by_org || []).length);
+            usageSummary.textContent = "Tracked users: " + byUser + " | Tracked orgs: " + byOrg;
+
+            usersBody.innerHTML = "";
+            (data.users || []).forEach(addUserRow);
+
+            requestsBody.innerHTML = "";
+            (data.pending_requests || []).forEach(function (req) {
+                const tr = document.createElement("tr");
+                tr.innerHTML =
+                    "<td>" + (req.email || "") + "</td>" +
+                    "<td>" + (req.requested_name || "") + "</td>" +
+                    "<td>" + (req.requested_organization || "") + "</td>" +
+                    "<td>" + (req.how_heard_about_us || "") + "</td>" +
+                    "<td>" + (req.suggested_org_id || "none") + "</td>" +
+                    "<td><button data-action='approve-request' data-request-id='" + req.request_id + "' data-email='" + req.email + "'>Approve</button> <button data-action='reject-request' data-request-id='" + req.request_id + "'>Reject</button></td>";
+                requestsBody.appendChild(tr);
+            });
+
+            errorsBody.innerHTML = "";
+            (data.errors || []).forEach(function (err) {
+                const tr = document.createElement("tr");
+                tr.innerHTML =
+                    "<td>" + (err.timestamp ? new Date(err.timestamp).toLocaleString("en-ZA") : "-") + "</td>" +
+                    "<td>" + (err.event || "-") + "</td>" +
+                    "<td>" + (err.path || "-") + "</td>" +
+                    "<td>" + (err.details || "-") + "</td>";
+                errorsBody.appendChild(tr);
+            });
+
+            renderReconciliation(data.reconciliation || {});
+        }
+
+        async function loadData() {
+            const [overview, usersPayload, requestsPayload, errorsPayload, usagePayload] = await Promise.all([
+                callJson("/admin/overview"),
+                callJson("/admin/users?limit=300&offset=0"),
+                callJson("/admin/requests?status=pending&limit=200&offset=0"),
+                callJson("/admin/errors?limit=80&offset=0"),
+                callJson("/admin/usage/summary"),
+            ]);
+            const data = {
+                generated_at: overview.generated_at,
+                default_pricing: overview.default_pricing,
+                billing_pricing: overview.billing_pricing || {},
+                organizations: overview.organizations || [],
+                reconciliation: overview.reconciliation || {},
+                users: usersPayload.items || [],
+                pending_requests: requestsPayload.items || [],
+                errors: errorsPayload.items || [],
+                usage_summary: (usagePayload || {}).summary || { by_user: [], by_org: [] },
+            };
+            writeAdminCache(data);
+            applyData(data);
+        }
+
+        document.getElementById("billingPricingForm").addEventListener("submit", async function (e) {
+            e.preventDefault();
+            billingPricingStatus.textContent = "Saving...";
+            let lineItems = [];
+            try {
+                lineItems = JSON.parse(document.getElementById("bpLineItemsJson").value || "[]");
+                if (!Array.isArray(lineItems)) throw new Error("Line items must be a JSON array");
+            } catch (err) {
+                billingPricingStatus.textContent = "Invalid JSON in line items: " + err;
+                return;
+            }
+            try {
+                var bracketsRaw = document.getElementById("bpTierBracketsJson").value || "[]";
+                var parsedBrackets;
+                try { parsedBrackets = JSON.parse(bracketsRaw); } catch (_e) { alert("Invalid JSON in tier brackets"); return; }
+                await callJson("/admin/billing-pricing", "PUT", {
+                    google_usd_per_classified_document: Number(document.getElementById("bpGoogleUsd").value || 0),
+                    margin_per_document_usd: Number(document.getElementById("bpMarginUsd").value || 0),
+                    usd_to_zar: Number(document.getElementById("bpUsdToZar").value || 0),
+                    infra_monthly_usd: Number(document.getElementById("bpInfraUsd").value || 0),
+                    tier_brackets: parsedBrackets,
+                    pricing_transparency_effective_date: (document.getElementById("bpEffectiveDate").value || "").trim(),
+                    transparency_estimate_scope_note: document.getElementById("bpTransparencyScopeNote").value || "",
+                    processor_limits_note: document.getElementById("bpProcessorNote").value || "",
+                    notice_non_profit: document.getElementById("bpNoticeNonProfit").value || "",
+                    notice_early_product: document.getElementById("bpNoticeEarly").value || "",
+                    notice_future_pricing: document.getElementById("bpNoticeFuture").value || "",
+                    notice_temporary: document.getElementById("bpNoticeTemporary").value || "",
+                    notice_accuracy: document.getElementById("bpNoticeAccuracy").value || "",
+                    pricing_transparency_line_items: lineItems,
+                });
+                clearAdminCache();
+                billingPricingStatus.textContent = "Saved.";
+                await loadData();
+            } catch (_err) {
+                billingPricingStatus.textContent = "Save failed.";
+            }
+        });
+
+        document.getElementById("orgForm").addEventListener("submit", async function (e) {
+            e.preventDefault();
+            orgStatus.textContent = "Creating...";
+            const name = document.getElementById("orgName").value || "";
+            const domains = (document.getElementById("orgDomains").value || "")
+                .split(",")
+                .map((s) => s.trim())
+                .filter(Boolean);
+            try {
+                await callJson("/admin/orgs", "POST", { name: name, domains: domains });
+                clearAdminCache();
+                orgStatus.textContent = "Organization created.";
+                e.target.reset();
+                await loadData();
+            } catch (_err) {
+                orgStatus.textContent = "Failed to create organization.";
+            }
+        });
+
+        usersBody.addEventListener("click", async function (e) {
+            const action = e.target.getAttribute("data-action");
+            const uid = e.target.getAttribute("data-uid");
+            if (!action || !uid) return;
+            if (action === "approve") {
+                await callJson("/admin/users/" + encodeURIComponent(uid) + "/status", "PUT", { status: "active" });
+            } else if (action === "revoke") {
+                await callJson("/admin/users/" + encodeURIComponent(uid) + "/status", "PUT", { status: "revoked" });
+            } else if (action === "credit") {
+                await callJson("/admin/users/" + encodeURIComponent(uid) + "/credits", "PUT", { amount: 50, reason: "trial_credit" });
+            } else if (action === "assign-org") {
+                const orgId = prompt("Enter organization id (blank to unassign):") || "";
+                await callJson("/admin/users/" + encodeURIComponent(uid) + "/org", "PUT", { org_id: orgId || null });
+            }
+            clearAdminCache();
+            await loadData();
+        });
+
+        requestsBody.addEventListener("click", async function (e) {
+            const action = e.target.getAttribute("data-action");
+            const requestId = e.target.getAttribute("data-request-id");
+            if (!action || !requestId) return;
+            if (action === "approve-request") {
+                const email = e.target.getAttribute("data-email") || "";
+                const resp = await callJson("/admin/requests/" + encodeURIComponent(requestId) + "/approve", "POST", { email: email });
+                if (resp && resp.password_setup_link) {
+                    alert("Approved. Share this password setup link with the user:\n\n" + resp.password_setup_link);
+                }
+            } else if (action === "reject-request") {
+                await callJson("/admin/requests/" + encodeURIComponent(requestId) + "/reject", "POST", { reason: "Rejected by admin" });
+            }
+            clearAdminCache();
+            await loadData();
+        });
+
+        async function downloadCsv(kind) {
+            const resp = await authFetch("/admin/export?kind=" + encodeURIComponent(kind));
+            if (!resp.ok) {
+                return;
+            }
+            const blob = await resp.blob();
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement("a");
+            link.href = url;
+            link.download = "admin_" + kind + "_report.csv";
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+            URL.revokeObjectURL(url);
+        }
+
+        document.getElementById("exportUsers").addEventListener("click", function (e) {
+            e.preventDefault();
+            downloadCsv("users");
+        });
+        document.getElementById("exportOrgs").addEventListener("click", function (e) {
+            e.preventDefault();
+            downloadCsv("orgs");
+        });
+        document.getElementById("exportEvents").addEventListener("click", function (e) {
+            e.preventDefault();
+            downloadCsv("events");
+        });
+
+        document.getElementById("runReconBtn").addEventListener("click", async function () {
+            reconAlert.textContent = "Running reconciliation...";
+            try {
+                const result = await callJson("/admin/reconciliation/run?days=35", "POST");
+                renderReconciliation(result);
+            } catch (_err) {
+                reconAlert.textContent = "Reconciliation run failed. Check configuration.";
+            }
+        });
+
+        const cached = readAdminCache();
+        if (cached) {
+            applyData(cached);
+            loadData().catch(() => {});
+        } else {
+            await loadData();
+        }
+    })();
+</script>
+</body>
+</html>

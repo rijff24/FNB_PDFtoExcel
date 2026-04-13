@@ -1,0 +1,236 @@
+# Deployment Guide
+
+The application is designed to run on **Google Cloud Run** with Firebase Authentication. This guide covers the full production deployment process.
+
+## Architecture Overview
+
+```
+Internet → Cloud Run (FastAPI app) → Document AI API
+                  ↑
+          Firebase Auth (JWT verification via public certs)
+```
+
+## Prerequisites
+
+- A GCP project with billing enabled.
+- Firebase project linked to the same GCP project.
+- `gcloud` CLI installed and authenticated.
+
+## GCP Setup
+
+### 1. Enable Required APIs
+
+In **APIs & Services → Enable APIs and Services**:
+
+- Cloud Run Admin API
+- Cloud Build API
+- Artifact Registry API
+- Document AI API
+
+### 2. Create Artifact Registry Repository
+
+```
+Artifact Registry → Repositories → Create repository
+  Name:     webapp-images
+  Format:   Docker
+  Mode:     Standard
+  Region:   africa-south1  (match your Cloud Run region)
+```
+
+Image path: `africa-south1-docker.pkg.dev/<project-id>/webapp-images`
+
+### 3. Create Document AI Processor
+
+```
+Document AI → Processors → Create processor
+  Type:     Bank Statement Parser
+  Name:     fnb-bank-statement-parser
+  Region:   eu
+```
+
+Note the **Processor ID** for `DOCUMENTAI_PROCESSOR_ID`.
+
+### 4. Create Runtime Service Account
+
+```
+IAM & Admin → Service Accounts → Create
+  Name:  cloudrun-pdf-service
+  Email: cloudrun-pdf-service@<project-id>.iam.gserviceaccount.com
+```
+
+Grant roles on the GCP project:
+- **Document AI API User** (`roles/documentai.apiUser`)
+- **Logs Writer** (`roles/logging.logWriter`)
+- **Secret Manager Secret Accessor** (`roles/secretmanager.secretAccessor`) — optional, for future secret management
+
+## Firebase Setup
+
+### 1. Link Firebase to GCP Project
+
+Firebase Console → Create project → Connect to existing GCP project.
+
+### 2. Enable Auth Providers
+
+Firebase Console → Authentication → Enable:
+- **Google**
+- **Email/Password**
+
+### 3. Add Authorized Domains
+
+Firebase Console → Authentication → Settings → Authorized domains:
+- Add your Cloud Run URL (e.g., `your-service-xxxxx-xx.a.run.app`)
+
+### 4. Create User Accounts
+
+Firebase Console → Authentication → Users → Add users that should be in the allowlist.
+
+## Cloud Run Deployment (Image-Based)
+
+This repository uses an image-based deployment flow:
+
+1. Build the Docker image locally.
+2. Push the image to Artifact Registry.
+3. Deploy Cloud Run using `--image`.
+
+### Environment Variables
+
+Set these in Cloud Run:
+
+| Variable | Value |
+|---|---|
+| `GOOGLE_CLOUD_PROJECT` | `<your-gcp-project-id>` |
+| `DOCUMENTAI_LOCATION` | `eu` |
+| `DOCUMENTAI_PROCESSOR_ID` | `<your-processor-id>` |
+| `FIREBASE_PROJECT_ID` | `<your-firebase-project-id>` |
+| `ALLOWED_USER_EMAILS` | `user1@example.com,user2@example.com` |
+| `MAX_FILE_SIZE_MB` | `10` |
+| `MAX_PAGES_PER_REQUEST` | `50` |
+| `MAX_REQUESTS_PER_MINUTE_PER_USER` | `10` |
+| `MAX_PAGES_PER_DAY_PER_USER` | `300` |
+| `REDIS_URL` | `<redis-url>` |
+| `BILLING_ENABLED` | `true` |
+| `DEFAULT_MONTHLY_LIMIT` | `100.00` |
+| `DEFAULT_WARN_PCT` | `80` |
+| `LOG_LEVEL` | `INFO` |
+
+### Build and Push
+
+```bash
+export PROJECT_ID="<your-gcp-project-id>"
+export REGION="africa-south1"
+export REPO="webapp-images"
+export IMAGE_NAME="fnb-pdf-to-excel"
+export IMAGE_TAG="$(date +%Y%m%d-%H%M%S)"
+export IMAGE_URI="${REGION}-docker.pkg.dev/${PROJECT_ID}/${REPO}/${IMAGE_NAME}:${IMAGE_TAG}"
+```
+
+```bash
+gcloud auth configure-docker "${REGION}-docker.pkg.dev"
+docker build -t "${IMAGE_URI}" .
+docker push "${IMAGE_URI}"
+```
+
+### Deploy Cloud Run
+
+```bash
+gcloud run deploy fnb-pdf-to-excel \
+  --image "${IMAGE_URI}" \
+  --region "${REGION}" \
+  --service-account "cloudrun-pdf-service@${PROJECT_ID}.iam.gserviceaccount.com" \
+  --set-env-vars "GOOGLE_CLOUD_PROJECT=${PROJECT_ID},DOCUMENTAI_LOCATION=eu,DOCUMENTAI_PROCESSOR_ID=<processor-id>,FIREBASE_PROJECT_ID=<firebase-project-id>,ALLOWED_USER_EMAILS=<emails>,MAX_FILE_SIZE_MB=10,MAX_PAGES_PER_REQUEST=50,MAX_REQUESTS_PER_MINUTE_PER_USER=10,MAX_PAGES_PER_DAY_PER_USER=300,REDIS_URL=<redis-url>,LOG_LEVEL=INFO" \
+  --timeout 120 \
+  --memory 512Mi \
+  --allow-unauthenticated
+```
+
+> **Note**: `--allow-unauthenticated` is expected because auth is handled in-app with Firebase bearer tokens.
+
+### Recommended Settings
+
+| Setting | Value | Reason |
+|---|---|---|
+| Timeout | 120s | Document AI processing can take 30–60s for large PDFs |
+| Memory | 512Mi | PDF processing and Excel generation are memory-intensive |
+| CPU | 1 | Sufficient for single-user / low-traffic usage |
+| Min instances | 1 | Keeps one warm instance to reduce auth/dashboard latency |
+| Max instances | 2 | Prevent cost overruns during testing |
+
+## Production Considerations
+
+### Session Storage
+
+Preview/review sessions should use shared storage (Redis/Memorystore) in production:
+- Survives app instance recycle.
+- Works consistently across multiple Cloud Run instances.
+- Reduces repeated bootstrap latency when users navigate between pages.
+
+### Document AI Caching
+
+The file-based cache (`.cache/docai/`) is **ephemeral** on Cloud Run — it will be cleared on every container restart. For production:
+- This is acceptable: the cache primarily benefits local development.
+- Optionally, use a Cloud Storage bucket for persistent caching.
+
+### Secrets Management
+
+For production, move sensitive values to **Secret Manager**:
+- `ALLOWED_USER_EMAILS`
+- Any future API keys
+
+Reference secrets in Cloud Run using `--set-secrets` instead of `--set-env-vars`.
+
+### Cost Controls
+
+Document AI charges per page processed. Implement rate limiting before going to production:
+- `MAX_FILE_SIZE_MB` (e.g., 10)
+- `MAX_PAGES_PER_REQUEST` (e.g., 50)
+- `MAX_REQUESTS_PER_MINUTE_PER_USER` (e.g., 10)
+- `MAX_PAGES_PER_DAY_PER_USER` (e.g., 300)
+
+These quota limits are enforced before Document AI calls.
+
+### Firestore Query Indexes
+
+This project includes a baseline index definition in `firestore.indexes.json`.
+
+Deploy indexes:
+
+```bash
+gcloud firestore indexes composite create --file=firestore.indexes.json
+```
+
+If you prefer Firebase CLI:
+
+```bash
+firebase deploy --only firestore:indexes
+```
+
+### Cache Layer
+
+For cross-instance cache hits, point `REDIS_URL` to Memorystore and keep short TTL caches for:
+- `admin:*` payloads
+- `billing:data:*`
+- preview sessions
+
+## Monitoring
+
+### Logs
+
+The application emits structured JSON logs via `app/services/logging_utils.py`. Key events:
+
+| Event | Level | Description |
+|---|---|---|
+| `auth_success` | INFO | Successful authentication |
+| `auth_failed_*` | ERROR | Various auth failure reasons |
+| `extract_success` | INFO | Successful extraction and download |
+| `extract_preview_success` | INFO | Successful preview generation |
+| `parser_visual_row` | INFO | Each parsed transaction (with details) |
+| `docai_cache_hit` | INFO | Document AI cache hit |
+| `docai_cache_write` | INFO | Document AI response cached |
+
+Logs are viewable in **Cloud Logging** when deployed to Cloud Run.
+
+Track these latency SLO checks after deployment:
+- `/billing/data` p95
+- `/admin/overview` p95
+- `/admin/users` p95
+- auth bootstrap (`POST /auth/session`) error rate and latency

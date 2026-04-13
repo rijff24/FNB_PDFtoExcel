@@ -1,0 +1,40 @@
+services:
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    depends_on:
+      - redis
+    ports:
+      - "8080:8080"
+    environment:
+      PORT: "8080"
+      LOG_LEVEL: "${LOG_LEVEL:-INFO}"
+      FIREBASE_PROJECT_ID: "${FIREBASE_PROJECT_ID}"
+      ALLOWED_USER_EMAILS: "${ALLOWED_USER_EMAILS}"
+      ADMIN_EMAILS: "${ADMIN_EMAILS:-}"
+      GOOGLE_CLOUD_PROJECT: "${GOOGLE_CLOUD_PROJECT}"
+      DOCUMENTAI_LOCATION: "${DOCUMENTAI_LOCATION}"
+      DOCUMENTAI_PROCESSOR_ID: "${DOCUMENTAI_PROCESSOR_ID}"
+      GOOGLE_APPLICATION_CREDENTIALS: "/gcp/application_default_credentials.json"
+      MAX_FILE_SIZE_MB: "${MAX_FILE_SIZE_MB:-10}"
+      MAX_PAGES_PER_REQUEST: "${MAX_PAGES_PER_REQUEST:-50}"
+      MAX_REQUESTS_PER_MINUTE_PER_USER: "${MAX_REQUESTS_PER_MINUTE_PER_USER:-10}"
+      MAX_PAGES_PER_DAY_PER_USER: "${MAX_PAGES_PER_DAY_PER_USER:-300}"
+      REDIS_URL: "redis://redis:6379/0"
+      BILLING_ENABLED: "${BILLING_ENABLED:-false}"
+      DEFAULT_MONTHLY_LIMIT: "${DEFAULT_MONTHLY_LIMIT:-100.00}"
+      DEFAULT_WARN_PCT: "${DEFAULT_WARN_PCT:-80}"
+      FIRESTORE_DATABASE_ID: "${FIRESTORE_DATABASE_ID:-}"
+      BQ_BILLING_TABLE: "${BQ_BILLING_TABLE:-}"
+      RECONCILIATION_TZ: "${RECONCILIATION_TZ:-Africa/Johannesburg}"
+      RECONCILIATION_ALERT_PCT: "${RECONCILIATION_ALERT_PCT:-15}"
+      RECONCILIATION_COLLECTION: "${RECONCILIATION_COLLECTION:-cost_reconciliation_daily}"
+    volumes:
+      - "${APPDATA}/gcloud/application_default_credentials.json:/gcp/application_default_credentials.json:ro"

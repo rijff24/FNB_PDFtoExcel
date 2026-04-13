@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Request Access</title>
+    <link rel="stylesheet" href="/static/style.css" />
+</head>
+<body>
+<main class="container">
+    <h1>Request Access</h1>
+    <p>Submit your details for manual account approval.</p>
+    <section class="card">
+        <form id="registerForm" class="auth-block">
+            <label for="regName">Name</label>
+            <input id="regName" type="text" />
+            <label for="regEmail">Email</label>
+            <input id="regEmail" type="email" required />
+            <label for="regOrganization">Organization</label>
+            <input id="regOrganization" type="text" required />
+            <label for="regHowHeard">How did you hear about us? (optional)</label>
+            <input id="regHowHeard" type="text" />
+            <button type="submit">Submit request</button>
+            <p id="registerStatus" class="status"></p>
+        </form>
+    </section>
+    <p><a href="/">Back to home</a></p>
+</main>
+<script>
+    document.getElementById("registerForm").addEventListener("submit", async function (e) {
+        e.preventDefault();
+        const status = document.getElementById("registerStatus");
+        status.textContent = "Submitting...";
+        const resp = await fetch("/register/request", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                requested_name: document.getElementById("regName").value || "",
+                email: document.getElementById("regEmail").value || "",
+                organization: document.getElementById("regOrganization").value || "",
+                how_heard_about_us: document.getElementById("regHowHeard").value || "",
+            }),
+        });
+        if (!resp.ok) {
+            status.textContent = "Failed to submit request.";
+            return;
+        }
+        status.textContent = "Request submitted. An admin will approve your account.";
+        e.target.reset();
+    });
+</script>
+</body>
+</html>

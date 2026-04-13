@@ -1,0 +1,489 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Billing</title>
+    <link rel="stylesheet" href="/static/style.css" />
+</head>
+<body>
+<main class="container">
+    <h1>Billing &amp; Usage</h1>
+    <p><a href="/">&larr; Back to home</a></p>
+
+    <section class="card billing-notice-card" id="noticesSection" style="display:none;">
+        <h2>Important</h2>
+        <div id="noticesBody" class="billing-notices"></div>
+    </section>
+
+    <section class="card">
+        <h2>This month</h2>
+        <div class="metric-grid">
+            <p class="metric-item"><strong>Documents billed</strong><span id="metricDocuments">0</span></p>
+            <p class="metric-item"><strong>Total billed</strong><span id="metricBilled">R0.00</span></p>
+            <p class="metric-item"><strong>Events</strong><span id="metricEvents">0</span></p>
+            <p class="metric-item"><strong>Warning events</strong><span id="metricWarnings">0</span></p>
+        </div>
+        <p id="summaryText" class="status">Loading...</p>
+    </section>
+
+    <section class="card">
+        <h2>How we price each document</h2>
+        <p id="pricingExplain" class="status">Loading...</p>
+        <div class="metric-grid">
+            <p class="metric-item"><strong>Google (list) USD / document</strong><span id="metricGoogleUsd">&mdash;</span></p>
+            <p class="metric-item"><strong>Our margin USD / document</strong><span id="metricMarginUsd">&mdash;</span></p>
+            <p class="metric-item"><strong>Infrastructure share USD / doc</strong><span id="metricInfraShare">&mdash;</span></p>
+            <p class="metric-item"><strong>USD &rarr; ZAR rate</strong><span id="metricFx">&mdash;</span></p>
+            <p class="metric-item"><strong>OCR tier price (USD)</strong><span id="metricTierUsd">&mdash;</span></p>
+            <p class="metric-item"><strong>OCR tier price (ZAR)</strong><span id="metricTierZar">&mdash;</span></p>
+            <p class="metric-item"><strong>Non-OCR tier price (USD)</strong><span id="metricNonOcrUsd">&mdash;</span></p>
+            <p class="metric-item"><strong>Non-OCR tier price (ZAR)</strong><span id="metricNonOcrZar">&mdash;</span></p>
+        </div>
+        <p class="status">Price drops as monthly volume increases. OCR-processed documents are billed at a tiered rate that includes Google's per-document charge, infrastructure amortization, and a fixed margin. Non-OCR extraction is billed at the same tier rate minus the Google Document AI charge (since Document AI is not used).</p>
+
+        <h3>Volume pricing tiers</h3>
+        <div style="overflow:auto;">
+            <table class="billing-table" id="tierTable">
+                <thead>
+                <tr>
+                    <th>Monthly volume (docs)</th>
+                    <th>OCR price / doc (USD)</th>
+                    <th>OCR price / doc (ZAR)</th>
+                    <th>Non-OCR price / doc (USD)</th>
+                    <th>Non-OCR price / doc (ZAR)</th>
+                </tr>
+                </thead>
+                <tbody id="tierBody"></tbody>
+            </table>
+        </div>
+    </section>
+
+    <section class="card">
+        <h2>What we pay Google (platform estimate)</h2>
+        <p class="status">Estimates from the Google Cloud Pricing Calculator; your actual Google invoice may differ (credits, promotions, rounding, timing).</p>
+        <p id="transparencyScopeNote" class="status"></p>
+        <p id="transparencyDate" class="status"></p>
+        <div style="overflow:auto;">
+            <table class="billing-table" id="transparencyTable">
+                <thead>
+                <tr>
+                    <th>Service</th>
+                    <th>SKU</th>
+                    <th>Qty</th>
+                    <th>Region</th>
+                    <th>Calculator assumptions</th>
+                    <th>Est. USD / mo</th>
+                    <th>Link</th>
+                </tr>
+                </thead>
+                <tbody id="transparencyBody"></tbody>
+            </table>
+        </div>
+    </section>
+
+    <section class="card">
+        <h2>Limits</h2>
+        <h3>Our app</h3>
+        <ul id="appLimitsList"></ul>
+        <h3>Google Document AI</h3>
+        <p><a href="https://cloud.google.com/document-ai/limits" target="_blank" rel="noopener">Document AI limits (official)</a></p>
+        <p id="processorLimitsNote" class="status"></p>
+    </section>
+
+    <section class="card">
+        <h2>Your monthly limit</h2>
+        <form id="limitsForm">
+            <label for="limitInput">Monthly limit amount (Rand / ZAR)</label>
+            <input id="limitInput" type="number" step="0.01" min="0" />
+
+            <label for="warnInput">Warning threshold (%)</label>
+            <input id="warnInput" type="number" step="1" min="1" max="99" />
+
+            <label class="checkbox">
+                <input id="hardStopInput" type="checkbox" />
+                Block processing at limit
+            </label>
+
+            <button type="submit">Save limits</button>
+        </form>
+        <p id="limitsStatus" class="status"></p>
+    </section>
+
+    <section class="card">
+        <h2>Recent usage events</h2>
+        <div style="overflow:auto;">
+            <table class="billing-table">
+                <thead>
+                <tr>
+                    <th>Date &amp; time</th>
+                    <th>Pages</th>
+                    <th>Documents</th>
+                    <th>OCR</th>
+                    <th>Status</th>
+                    <th>Billed (ZAR)</th>
+                </tr>
+                </thead>
+                <tbody id="eventsBody"></tbody>
+            </table>
+        </div>
+    </section>
+</main>
+
+<script>
+    (async function () {
+        const BILLING_CACHE_KEY_PREFIX = "billingDataCacheV3";
+        const BILLING_CACHE_TTL_MS = 120000;
+        const token = sessionStorage.getItem("idToken") || localStorage.getItem("idToken");
+        const summaryText = document.getElementById("summaryText");
+        const limitsStatus = document.getElementById("limitsStatus");
+        const eventsBody = document.getElementById("eventsBody");
+        const form = document.getElementById("limitsForm");
+        const limitInput = document.getElementById("limitInput");
+        const warnInput = document.getElementById("warnInput");
+        const hardStopInput = document.getElementById("hardStopInput");
+        const metricDocuments = document.getElementById("metricDocuments");
+        const metricBilled = document.getElementById("metricBilled");
+        const metricEvents = document.getElementById("metricEvents");
+        const metricWarnings = document.getElementById("metricWarnings");
+        const metricGoogleUsd = document.getElementById("metricGoogleUsd");
+        const metricMarginUsd = document.getElementById("metricMarginUsd");
+        const metricInfraShare = document.getElementById("metricInfraShare");
+        const metricFx = document.getElementById("metricFx");
+        const metricTierUsd = document.getElementById("metricTierUsd");
+        const metricTierZar = document.getElementById("metricTierZar");
+        const metricEffectiveZar = document.getElementById("metricEffectiveZar");
+        const pricingExplain = document.getElementById("pricingExplain");
+        const tierBody = document.getElementById("tierBody");
+        const transparencyBody = document.getElementById("transparencyBody");
+        const transparencyDate = document.getElementById("transparencyDate");
+        const transparencyScopeNote = document.getElementById("transparencyScopeNote");
+        const appLimitsList = document.getElementById("appLimitsList");
+        const processorLimitsNote = document.getElementById("processorLimitsNote");
+        const noticesSection = document.getElementById("noticesSection");
+        const noticesBody = document.getElementById("noticesBody");
+
+        function getCookie(name) {
+            const target = name + "=";
+            const parts = document.cookie ? document.cookie.split(";") : [];
+            for (const part of parts) {
+                const trimmed = part.trim();
+                if (trimmed.startsWith(target)) return decodeURIComponent(trimmed.substring(target.length));
+            }
+            return "";
+        }
+
+        async function authFetch(url, options) {
+            const opts = Object.assign({ credentials: "same-origin" }, options || {});
+            opts.headers = Object.assign({}, (options && options.headers) || {});
+            let resp = await fetch(url, opts);
+            if ((resp.status === 401 || resp.status === 403) && token) {
+                opts.headers.Authorization = "Bearer " + token;
+                resp = await fetch(url, opts);
+            }
+            return resp;
+        }
+
+        async function authFetchWithCsrf(url, options) {
+            const csrfToken = getCookie("csrf_token");
+            const opts = Object.assign({}, options || {});
+            opts.headers = Object.assign({}, (options && options.headers) || {});
+            if (csrfToken) {
+                opts.headers["X-CSRF-Token"] = csrfToken;
+            }
+            return authFetch(url, opts);
+        }
+
+        function formatRand(value) {
+            return new Intl.NumberFormat("en-ZA", {
+                style: "currency",
+                currency: "ZAR",
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2,
+            }).format(Number(value || 0));
+        }
+
+        function formatUsd(value) {
+            return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", minimumFractionDigits: 2, maximumFractionDigits: 4 }).format(Number(value || 0));
+        }
+
+        function decodeTokenUserId(idToken) {
+            try {
+                const parts = String(idToken || "").split(".");
+                if (parts.length < 2) return "anonymous";
+                const payload = JSON.parse(atob(parts[1].replace(/-/g, "+").replace(/_/g, "/")));
+                return String(payload.user_id || payload.sub || "anonymous");
+            } catch (_err) {
+                return "anonymous";
+            }
+        }
+
+        function cacheKey() {
+            return BILLING_CACHE_KEY_PREFIX + ":" + decodeTokenUserId(token);
+        }
+
+        function readCache() {
+            try {
+                const raw = sessionStorage.getItem(cacheKey());
+                if (!raw) return null;
+                const parsed = JSON.parse(raw);
+                const ageMs = Date.now() - Number(parsed.cachedAt || 0);
+                if (ageMs > BILLING_CACHE_TTL_MS) return null;
+                return parsed.payload || null;
+            } catch (_err) {
+                return null;
+            }
+        }
+
+        function writeCache(payload) {
+            sessionStorage.setItem(
+                cacheKey(),
+                JSON.stringify({ cachedAt: Date.now(), payload: payload })
+            );
+        }
+
+        function clearCache() {
+            sessionStorage.removeItem(cacheKey());
+        }
+
+        function escapeHtml(s) {
+            return String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+        }
+
+        function renderAssumptionsCell(row) {
+            const limits = row.estimate_limits;
+            if (Array.isArray(limits) && limits.length) {
+                return (
+                    "<ul class=\"transparency-assumptions\">" +
+                    limits
+                        .map(function (pair) {
+                            const lab = escapeHtml(pair && pair.label);
+                            const val = escapeHtml(pair && pair.value);
+                            return "<li><strong>" + lab + "</strong>: " + val + "</li>";
+                        })
+                        .join("") +
+                    "</ul>"
+                );
+            }
+            if (row.notes) return "<span>" + escapeHtml(row.notes) + "</span>";
+            return "\u2014";
+        }
+
+        function renderNotices(t) {
+            const blocks = [
+                t.notice_non_profit,
+                t.notice_early_product,
+                t.notice_future_pricing,
+                t.notice_temporary,
+                t.notice_accuracy,
+            ].filter(Boolean);
+            if (!blocks.length) {
+                noticesSection.style.display = "none";
+                return;
+            }
+            noticesSection.style.display = "block";
+            noticesBody.innerHTML = blocks.map(function (text) {
+                return "<p>" + String(text).replace(/</g, "&lt;").replace(/>/g, "&gt;") + "</p>";
+            }).join("");
+        }
+
+        function renderTransparency(t) {
+            if (transparencyScopeNote) {
+                const sn = (t && t.transparency_estimate_scope_note) || "";
+                transparencyScopeNote.textContent = sn;
+                transparencyScopeNote.style.display = sn ? "" : "none";
+            }
+            transparencyBody.innerHTML = "";
+            const rows = (t && t.pricing_transparency_line_items) || [];
+            if (!rows.length) {
+                const tr = document.createElement("tr");
+                tr.innerHTML = "<td colspan='7' class='status'>No line items configured yet (admin).</td>";
+                transparencyBody.appendChild(tr);
+                return;
+            }
+            rows.forEach(function (row) {
+                const tr = document.createElement("tr");
+                const link = row.doc_url
+                    ? "<a href=\"" + String(row.doc_url).replace(/"/g, "&quot;") + "\" target=\"_blank\" rel=\"noopener\">Docs</a>"
+                    : "\u2014";
+                tr.innerHTML =
+                    "<td>" + escapeHtml(row.service || "\u2014") + "</td>" +
+                    "<td>" + escapeHtml(row.sku || "\u2014") + "</td>" +
+                    "<td>" + escapeHtml((row.quantity != null ? row.quantity : "\u2014") + " " + (row.quantity_unit || "")) + "</td>" +
+                    "<td>" + escapeHtml(row.region || "\u2014") + "</td>" +
+                    "<td>" + renderAssumptionsCell(row) + "</td>" +
+                    "<td>" + (row.monthly_usd != null ? formatUsd(row.monthly_usd) : "\u2014") + "</td>" +
+                    "<td>" + link + "</td>";
+                transparencyBody.appendChild(tr);
+            });
+            const eff = t.pricing_transparency_effective_date || "";
+            transparencyDate.textContent = eff ? ("Prices / estimates as of: " + eff) : "";
+        }
+
+        function renderTierTable(pricing) {
+            tierBody.innerHTML = "";
+            var table = pricing.tier_table || [];
+            if (!table.length) return;
+            var currentVol = pricing.current_volume || 0;
+            var googleUsd = Number(pricing.google_usd_per_document || 0.75);
+            var fx = Number(pricing.usd_to_zar || 18.5);
+            table.forEach(function (row) {
+                var tr = document.createElement("tr");
+                var lo = row.min_docs || 1;
+                var hi = row.max_docs;
+                var inBracket = currentVol > 0 && currentVol >= lo && (hi == null || currentVol <= hi);
+                if (inBracket) { tr.style.fontWeight = "bold"; tr.style.background = "#eef6ff"; }
+                var nonOcrUsd = Math.max(0, row.price_usd - googleUsd);
+                var nonOcrZar = nonOcrUsd * fx;
+                tr.innerHTML =
+                    "<td>" + escapeHtml(row.label || lo) + "</td>" +
+                    "<td>" + formatUsd(row.price_usd) + "</td>" +
+                    "<td>" + formatRand(row.price_zar) + "</td>" +
+                    "<td>" + formatUsd(nonOcrUsd) + "</td>" +
+                    "<td>" + formatRand(nonOcrZar) + "</td>";
+                tierBody.appendChild(tr);
+            });
+        }
+
+        function renderAppLimits(limits) {
+            appLimitsList.innerHTML = "";
+            const items = [
+                ["Max file size (MB)", limits.max_file_size_mb],
+                ["Max pages per request", limits.max_pages_per_request],
+                ["Max OCR requests / minute / user", limits.max_requests_per_minute_per_user],
+                ["Max OCR pages / day / user", limits.max_pages_per_day_per_user],
+            ];
+            items.forEach(function (pair) {
+                if (pair[1] == null) return;
+                const li = document.createElement("li");
+                li.textContent = pair[0] + ": " + pair[1];
+                appLimitsList.appendChild(li);
+            });
+        }
+
+        function render(data) {
+            const rollup = (data.report && data.report.rollup) || {};
+            const settings = data.settings || {};
+            const events = (data.report && data.report.recent_events) || [];
+            const totalOcrDocs = Number(rollup.total_documents || rollup.total_statements || 0);
+            const totalNonOcrDocs = Number(rollup.total_non_ocr_documents || 0);
+            const totalDocs = totalOcrDocs + totalNonOcrDocs;
+            const totalBilled = Number(rollup.total_billable || 0);
+            const limit = Number(settings.monthly_limit_amount || 0);
+            const pct = limit > 0 ? Math.min(100, Math.round((totalBilled / limit) * 100)) : 0;
+
+            const t = data.transparency || {};
+            const pricing = data.pricing || {};
+
+            metricDocuments.textContent = String(totalDocs);
+            metricBilled.textContent = formatRand(totalBilled);
+            metricEvents.textContent = String(Number(rollup.event_count || 0));
+            metricWarnings.textContent = String(Number(rollup.warning_count || 0));
+
+            metricGoogleUsd.textContent = formatUsd(pricing.google_usd_per_document);
+            metricMarginUsd.textContent = formatUsd(pricing.margin_per_document_usd);
+            var infraShare = pricing.infra_monthly_usd && totalDocs > 0
+                ? pricing.infra_monthly_usd / totalDocs : pricing.infra_monthly_usd || 0;
+            metricInfraShare.textContent = totalDocs > 0 ? formatUsd(infraShare) : ("~" + formatUsd(pricing.infra_monthly_usd) + "/mo total");
+            metricFx.textContent = pricing.usd_to_zar != null ? String(pricing.usd_to_zar) : "\u2014";
+            metricTierUsd.textContent = formatUsd(pricing.current_tier_price_usd);
+            metricTierZar.textContent = formatRand(pricing.current_tier_price_zar);
+            var nonOcrUsdEl = document.getElementById("metricNonOcrUsd");
+            var nonOcrZarEl = document.getElementById("metricNonOcrZar");
+            if (nonOcrUsdEl) nonOcrUsdEl.textContent = formatUsd(pricing.non_ocr_tier_price_usd);
+            if (nonOcrZarEl) nonOcrZarEl.textContent = formatRand(pricing.non_ocr_tier_price_zar);
+
+            var volText = totalDocs > 0
+                ? ("Your current volume: " + totalDocs + " docs this month.")
+                : "No documents processed yet this month.";
+            pricingExplain.textContent = volText +
+                " Your per-document price is determined by monthly volume (see tier table below).";
+
+            renderTierTable(pricing);
+            renderNotices(t);
+            renderTransparency(t);
+            processorLimitsNote.textContent = t.processor_limits_note || "";
+            renderAppLimits(data.app_limits || {});
+
+            summaryText.textContent =
+                "Monthly billed " + formatRand(totalBilled) +
+                " of limit " + formatRand(limit) + " (" + pct + "%). " +
+                (totalDocs ? ("Documents billed this month: " + totalDocs + ".") : "");
+
+            limitInput.value = settings.monthly_limit_amount ?? 0;
+            warnInput.value = settings.warn_pct ?? 80;
+            hardStopInput.checked = !!settings.hard_stop_enabled;
+
+            eventsBody.innerHTML = "";
+            if (!events.length) {
+                const row = document.createElement("tr");
+                row.innerHTML = "<td colspan='6' class='status'>No usage events yet.</td>";
+                eventsBody.appendChild(row);
+                return;
+            }
+            for (const ev of events) {
+                const row = document.createElement("tr");
+                var docsBilled = Number(ev.documents_billed || 0) + Number(ev.non_ocr_documents_billed || 0);
+                const docs = String(docsBilled);
+                row.innerHTML =
+                    "<td>" + (ev.timestamp ? new Date(ev.timestamp).toLocaleString("en-ZA") : "-") + "</td>" +
+                    "<td>" + Number(ev.page_count || 0) + "</td>" +
+                    "<td>" + docs + "</td>" +
+                    "<td>" + (ev.enable_ocr ? "Yes" : "No") + "</td>" +
+                    "<td>" + (ev.status || "-") + "</td>" +
+                    "<td>" + formatRand(Number(ev.billable_total || 0)) + "</td>";
+                eventsBody.appendChild(row);
+            }
+        }
+
+        async function loadData(forceRefresh) {
+            if (!forceRefresh) {
+                const cached = readCache();
+                if (cached) {
+                    render(cached);
+                    return;
+                }
+            }
+            const resp = await authFetch("/billing/data");
+            if (!resp.ok) {
+                if (resp.status === 401 || resp.status === 403) {
+                    window.location.href = "/";
+                    return;
+                }
+                summaryText.textContent = "Failed to load billing data: " + resp.status;
+                return;
+            }
+            const data = await resp.json();
+            writeCache(data);
+            render(data);
+        }
+
+        form.addEventListener("submit", async function (e) {
+            e.preventDefault();
+            limitsStatus.textContent = "Saving...";
+            const resp = await authFetchWithCsrf("/billing/limits", {
+                method: "PUT",
+                headers: {
+                    "Content-Type": "application/json",
+                },
+                body: JSON.stringify({
+                    monthly_limit_amount: Number(limitInput.value || 0),
+                    warn_pct: Number(warnInput.value || 80),
+                    hard_stop_enabled: hardStopInput.checked,
+                }),
+            });
+            if (!resp.ok) {
+                const text = await resp.text().catch(() => "");
+                limitsStatus.textContent = "Save failed: " + (text || resp.status);
+                return;
+            }
+            clearCache();
+            limitsStatus.textContent = "Saved.";
+            await loadData(true);
+        });
+
+        await loadData(false);
+    })();
+</script>
+</body>
+</html>

@@ -1,0 +1,1120 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>FNB Statement Review</title>
+    <link rel="stylesheet" href="/static/style.css" />
+    <style>
+        body {
+            background: radial-gradient(circle at top left, #f1f5ff 0, #f9fafb 45%, #eef2ff 100%);
+        }
+
+        main.container {
+            max-width: 100%;
+            padding-inline: 0.5rem;
+        }
+
+        .review-layout {
+            display: flex;
+            align-items: flex-start;
+            gap: 0;
+        }
+
+        @media (max-width: 1024px) {
+            .review-layout {
+                flex-direction: column;
+            }
+            .review-layout .pdf-viewer,
+            .review-layout .transactions-card {
+                width: 100% !important;
+            }
+            .resize-handle { display: none; }
+        }
+
+        .pdf-viewer {
+            position: relative;
+            background: #020817;
+            border-radius: 18px;
+            padding: 0.75rem 0.75rem 1rem;
+            box-shadow:
+                0 18px 40px rgba(15, 23, 42, 0.45),
+                0 0 0 1px rgba(148, 163, 184, 0.22);
+            overflow-y: auto;
+            max-height: 88vh;
+            min-width: 200px;
+            flex-shrink: 0;
+        }
+
+        .pdf-viewer h2 {
+            font-size: 0.8rem;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            color: #94a3b8;
+            margin-bottom: 0.25rem;
+        }
+
+        .pdf-toolbar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 0.6rem;
+            font-size: 0.8rem;
+            color: #9ca3af;
+        }
+
+        .pdf-toolbar label {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.4rem;
+        }
+
+        .pdf-toolbar input[type="range"] {
+            width: 120px;
+        }
+
+        .pdf-canvas-wrapper {
+            position: relative;
+            overflow-x: auto;
+            overflow-y: visible;
+        }
+
+        #pdfCanvas {
+            display: block;
+            border-radius: 8px;
+            background: #0b1120;
+        }
+
+        #pdfOverlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            pointer-events: none;
+        }
+
+        .pdf-highlight {
+            position: absolute;
+            border: 2px solid #22d3ee;
+            background: rgba(34, 211, 238, 0.14);
+            box-shadow:
+                0 0 0 1px rgba(15, 23, 42, 0.7),
+                0 0 0 6px rgba(34, 211, 238, 0.18);
+            border-radius: 6px;
+            transition: all 120ms ease-out;
+        }
+
+        /* ── Resize handle ── */
+        .resize-handle {
+            width: 8px;
+            min-height: 200px;
+            align-self: stretch;
+            cursor: col-resize;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+            user-select: none;
+            z-index: 5;
+        }
+
+        .resize-handle-bar {
+            width: 4px;
+            height: 48px;
+            border-radius: 2px;
+            background: #cbd5e1;
+            transition: background 150ms;
+        }
+
+        .resize-handle:hover .resize-handle-bar,
+        .resize-handle.active .resize-handle-bar {
+            background: #2563eb;
+        }
+
+        /* ── Transactions card ── */
+        .transactions-card {
+            border-radius: 18px;
+            background: #ffffff;
+            box-shadow:
+                0 16px 35px rgba(15, 23, 42, 0.16),
+                0 0 0 1px rgba(148, 163, 184, 0.28);
+            padding: 0.75rem 1rem;
+            min-width: 300px;
+            flex: 1;
+            overflow: hidden;
+        }
+
+        .table-toolbar {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 0.75rem;
+            margin-top: 0.25rem;
+        }
+
+        .table-toolbar .toolbar-left,
+        .table-toolbar .toolbar-center,
+        .table-toolbar .toolbar-right {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .table-toolbar button {
+            font-size: 0.75rem;
+            padding: 0.3rem 0.6rem;
+        }
+
+        #dirtyLabel {
+            font-size: 0.75rem;
+            color: #6b7280;
+        }
+
+        .cell-input {
+            width: 100%;
+            height: 100%;
+            box-sizing: border-box;
+            border: none;
+            outline: none;
+            background: transparent;
+            font: inherit;
+            text-align: inherit;
+            padding: 0;
+            margin: 0;
+        }
+
+        .review-cell {
+            text-align: center;
+        }
+
+        .review-checkbox {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 1.1rem;
+            height: 1.1rem;
+            border-radius: 4px;
+            border: 1px solid #d1d5db;
+            font-size: 0.8rem;
+            line-height: 1;
+            cursor: pointer;
+        }
+
+        .review-checkbox.review-blank {
+            background: #ffffff;
+            color: #6b7280;
+        }
+
+        .review-checkbox.review-needs {
+            background: #fef3c7;
+            border-color: #f97316;
+            color: #f97316;
+        }
+
+        .review-checkbox.review-done {
+            background: #ecfdf3;
+            border-color: #22c55e;
+            color: #16a34a;
+        }
+
+        .transactions-table-wrapper {
+            max-height: 82vh;
+            overflow: auto;
+            margin-top: 0.5rem;
+        }
+
+        table.transactions {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.85rem;
+            table-layout: fixed;
+        }
+
+        table.transactions th,
+        table.transactions td {
+            padding: 0.4rem 0.5rem;
+            border-bottom: 1px solid rgba(226, 232, 240, 0.9);
+            text-align: left;
+            white-space: nowrap;
+            overflow: hidden;
+        }
+
+        table.transactions td.desc-cell {
+            white-space: normal;
+            word-break: break-word;
+            min-width: 140px;
+        }
+
+        table.transactions td.num-cell {
+            text-align: right;
+            font-variant-numeric: tabular-nums;
+        }
+
+        table.transactions th.num-header {
+            text-align: right;
+        }
+
+        /* Initial column widths (user can override via header drag) */
+        .col-index   { width: 3rem; }
+        .col-date    { width: 4.5rem; }
+        .col-desc    { width: 22rem; }
+        .col-amount  { width: 7.5rem; }
+        .col-balance { width: 8rem; }
+        .col-charges { width: 6rem; }
+        .col-review  { width: 4rem; }
+
+        table.transactions thead th {
+            position: sticky;
+            top: 0;
+            background: #f8fafc;
+            z-index: 2;
+            font-size: 0.74rem;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            color: #64748b;
+        }
+
+        .col-resizer {
+            position: absolute;
+            top: 0;
+            right: 0;
+            width: 6px;
+            height: 100%;
+            cursor: col-resize;
+            user-select: none;
+        }
+
+        table.transactions tbody tr:nth-child(even) {
+            background: #f9fafb;
+        }
+
+        table.transactions td[data-bbox] {
+            cursor: pointer;
+        }
+
+        table.transactions td[data-bbox]:hover {
+            background: rgba(34, 211, 238, 0.12);
+        }
+
+        table.transactions tr:hover {
+            background: #e0f2fe;
+            cursor: pointer;
+        }
+
+        tr.needs-review-row {
+            background: #fef9c3;
+        }
+
+        .badge {
+            display: inline-flex;
+            align-items: center;
+            padding: 0.12rem 0.5rem;
+            border-radius: 999px;
+            font-size: 0.7rem;
+            font-weight: 500;
+        }
+
+        .badge-warning {
+            background: #fef3c7;
+            color: #92400e;
+        }
+
+        .review-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: baseline;
+            margin-bottom: 0.75rem;
+            padding-inline: 0.25rem;
+        }
+
+        .review-header h1 {
+            margin-bottom: 0.1rem;
+        }
+
+        .review-meta {
+            font-size: 0.82rem;
+            color: #6b7280;
+        }
+
+        .link {
+            font-size: 0.85rem;
+            color: #2563eb;
+        }
+    </style>
+</head>
+<body>
+<main class="container">
+    <div class="review-header">
+        <div>
+            <h1>Statement Review</h1>
+            <p class="review-meta">
+                Session: <code>{{ session_id }}</code>
+            </p>
+        </div>
+        <div>
+            <a href="/" class="link">&larr; Back to upload</a>
+        </div>
+    </div>
+
+    <section class="review-layout" id="reviewLayout">
+        <div class="card pdf-viewer" id="pdfPanel">
+            <h2>PDF</h2>
+            <div class="pdf-toolbar">
+                <label>
+                    Zoom
+                    <input id="zoomSlider" type="range" min="0.75" max="2.5" step="0.25" value="1.5" />
+                </label>
+                <span id="zoomValue">150%</span>
+            </div>
+            <div class="pdf-canvas-wrapper" id="pdfCanvasWrapper">
+                <canvas id="pdfCanvas"></canvas>
+                <div id="pdfOverlay"></div>
+            </div>
+            <p id="pdfStatus" class="status"></p>
+        </div>
+
+        <div class="resize-handle" id="resizeHandle"><div class="resize-handle-bar"></div></div>
+
+        <div class="transactions-card" id="tablePanel">
+            <h2>Parsed transactions</h2>
+            <p id="tableStatus" class="status"></p>
+
+            <div class="table-toolbar" id="tableToolbar">
+                <div class="toolbar-left">
+                    <button type="button" id="undoBtn" disabled>Undo</button>
+                    <button type="button" id="redoBtn" disabled>Redo</button>
+                </div>
+                <div class="toolbar-center">
+                    <button type="button" id="saveBtn" disabled>Save</button>
+                    <button type="button" id="downloadBtn">Download Excel</button>
+                </div>
+                <div class="toolbar-right">
+                    <span id="dirtyLabel"></span>
+                </div>
+            </div>
+
+            <div class="transactions-table-wrapper">
+                <table class="transactions" id="transactionsTable">
+                    <colgroup id="transactionsColgroup">
+                        <col class="col-index" />
+                        <col class="col-date" />
+                        <col class="col-desc" />
+                        <col class="col-amount" />
+                        <col class="col-balance" />
+                        <col class="col-charges" />
+                        <col class="col-review" />
+                    </colgroup>
+                    <thead>
+                    <tr>
+                        <th>#</th>
+                        <th>Date</th>
+                        <th>Description</th>
+                        <th class="num-header">Amount</th>
+                        <th class="num-header">Balance</th>
+                        <th class="num-header">Charges</th>
+                        <th>Review</th>
+                    </tr>
+                    </thead>
+                    <tbody></tbody>
+                </table>
+            </div>
+        </div>
+    </section>
+</main>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script>
+    (function () {
+        const sessionId = "{{ session_id }}";
+        const pdfCanvas = document.getElementById("pdfCanvas");
+        const pdfOverlay = document.getElementById("pdfOverlay");
+        const pdfCanvasWrapper = document.getElementById("pdfCanvasWrapper");
+        const pdfViewer = document.querySelector(".pdf-viewer");
+        const pdfStatus = document.getElementById("pdfStatus");
+        const tableStatus = document.getElementById("tableStatus");
+        const tbody = document.querySelector("#transactionsTable tbody");
+
+        // In-memory state
+        let transactions = [];
+        let undoStack = [];
+        let redoStack = [];
+        let dirtyCount = 0;
+
+        let pdfDoc = null;
+        let currentPage = 1;
+        let currentZoom = 1.5;
+        let lastBbox = null;
+        let clearTimer = null;
+
+        function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
+
+        function formatCurrency(value) {
+            if (value == null || value === "") return "";
+            var num = Number(value);
+            if (isNaN(num)) return String(value);
+            var sign = num < 0 ? "-" : "";
+            var abs = Math.abs(num).toFixed(2);
+            var parts = abs.split(".");
+            var intPart = parts[0];
+            var decPart = parts[1];
+            var grouped = intPart.replace(/\B(?=(\d{3})+(?!\d))/g, " ");
+            return sign + grouped + "." + decPart;
+        }
+
+        function setDirty(delta) {
+            dirtyCount = Math.max(0, dirtyCount + delta);
+            updateToolbarState();
+        }
+
+        function clearRedo() {
+            redoStack = [];
+        }
+
+        function pushAction(action) {
+            undoStack.push(action);
+            if (undoStack.length > 50) {
+                undoStack.shift();
+            }
+            clearRedo();
+            setDirty(1);
+        }
+
+        function updateToolbarState() {
+            var undoBtn = document.getElementById("undoBtn");
+            var redoBtn = document.getElementById("redoBtn");
+            var saveBtn = document.getElementById("saveBtn");
+            var dirtyLabel = document.getElementById("dirtyLabel");
+
+            if (undoBtn) undoBtn.disabled = undoStack.length === 0;
+            if (redoBtn) redoBtn.disabled = redoStack.length === 0;
+            if (saveBtn) saveBtn.disabled = dirtyCount === 0;
+            if (dirtyLabel) {
+                dirtyLabel.textContent = dirtyCount > 0
+                    ? dirtyCount + " unsaved change" + (dirtyCount > 1 ? "s" : "")
+                    : "";
+            }
+        }
+
+        function getReviewState(tx) {
+            if (tx.review_state === "blank" || tx.review_state === "needs" || tx.review_state === "done") {
+                return tx.review_state;
+            }
+            if (tx.needs_review) {
+                return "needs";
+            }
+            return "blank";
+        }
+
+        function setPdfStatus(text) {
+            if (pdfStatus) pdfStatus.textContent = text || "";
+        }
+
+        function setTableStatus(text) {
+            if (tableStatus) tableStatus.textContent = text || "";
+        }
+
+        function clearHighlight() {
+            while (pdfOverlay.firstChild) {
+                pdfOverlay.removeChild(pdfOverlay.firstChild);
+            }
+        }
+
+        function scheduleClear() {
+            if (clearTimer) clearTimeout(clearTimer);
+            clearTimer = setTimeout(function () {
+                clearHighlight();
+                clearTimer = null;
+            }, 60);
+        }
+
+        function cancelClear() {
+            if (clearTimer) {
+                clearTimeout(clearTimer);
+                clearTimer = null;
+            }
+        }
+
+        function drawHighlight(bbox, scrollIntoView) {
+            if (scrollIntoView === undefined) scrollIntoView = true;
+            clearHighlight();
+            if (!bbox || !pdfCanvas.width || !pdfCanvas.height) return;
+
+            lastBbox = bbox;
+
+            var xMin = clamp(bbox.x_min, 0, 1);
+            var yMin = clamp(bbox.y_min, 0, 1);
+            var xMax = clamp(bbox.x_max, 0, 1);
+            var yMax = clamp(bbox.y_max, 0, 1);
+
+            var width = pdfCanvas.clientWidth;
+            var height = pdfCanvas.clientHeight;
+
+            var pad = 4;
+            var left = Math.max(0, xMin * width - pad);
+            var top = Math.max(0, yMin * height - pad);
+            var boxWidth = (xMax - xMin) * width + pad * 2;
+            var boxHeight = (yMax - yMin) * height + pad * 2;
+
+            var rect = document.createElement("div");
+            rect.className = "pdf-highlight";
+            rect.style.left = left + "px";
+            rect.style.top = top + "px";
+            rect.style.width = boxWidth + "px";
+            rect.style.height = boxHeight + "px";
+            pdfOverlay.appendChild(rect);
+
+            if (scrollIntoView && pdfViewer && pdfCanvasWrapper) {
+                var hlCenterX = left + boxWidth / 2;
+
+                var wrapW = pdfCanvasWrapper.clientWidth;
+                var maxScrollX = pdfCanvasWrapper.scrollWidth - wrapW;
+                var targetX = clamp(hlCenterX - wrapW / 2, 0, maxScrollX);
+                pdfCanvasWrapper.scrollTo({ left: targetX, behavior: "smooth" });
+
+                var wrapOffsetTop = pdfCanvasWrapper.offsetTop;
+                var hlCenterYInViewer = wrapOffsetTop + top + boxHeight / 2;
+                var outerMaxScroll = pdfViewer.scrollHeight - pdfViewer.clientHeight;
+                var outerTarget = clamp(
+                    hlCenterYInViewer - pdfViewer.clientHeight / 2,
+                    0,
+                    outerMaxScroll
+                );
+                pdfViewer.scrollTo({ top: outerTarget, behavior: "smooth" });
+            }
+        }
+
+        async function loadPdf() {
+            setPdfStatus("Loading PDF...");
+            try {
+                var resp = await fetch("/preview/pdf/" + sessionId);
+                if (!resp.ok) {
+                    var text = await resp.text().catch(function () { return ""; });
+                    setPdfStatus(
+                        "Failed to load PDF (" +
+                        resp.status +
+                        "): " +
+                        (text || "preview session may have expired or been reset.")
+                    );
+                    return;
+                }
+
+                var arrayBuffer = await resp.arrayBuffer();
+                var loadingTask = window["pdfjsLib"].getDocument({ data: arrayBuffer });
+                pdfDoc = await loadingTask.promise;
+                currentPage = 1;
+                await renderPage(currentPage);
+                setPdfStatus("");
+            } catch (err) {
+                console.error(err);
+                setPdfStatus("Failed to load PDF: " + (err && err.message ? err.message : String(err)));
+            }
+        }
+
+        async function renderPage(pageNumber) {
+            if (!pdfDoc) return;
+            try {
+                var page = await pdfDoc.getPage(pageNumber);
+                var viewport = page.getViewport({ scale: currentZoom });
+                var context = pdfCanvas.getContext("2d");
+                pdfCanvas.height = viewport.height;
+                pdfCanvas.width = viewport.width;
+
+                pdfOverlay.style.width = viewport.width + "px";
+                pdfOverlay.style.height = viewport.height + "px";
+
+                clearHighlight();
+
+                var renderContext = {
+                    canvasContext: context,
+                    viewport: viewport
+                };
+                await page.render(renderContext).promise;
+
+                if (lastBbox) {
+                    drawHighlight(lastBbox, false);
+                }
+            } catch (err) {
+                console.error(err);
+                setPdfStatus("Failed to render page: " + (err && err.message ? err.message : String(err)));
+            }
+        }
+
+        function renderTable() {
+            tbody.innerHTML = "";
+            if (!transactions || !transactions.length) {
+                setTableStatus("No transactions to display.");
+                return;
+            }
+            setTableStatus("");
+
+            transactions.forEach(function (tx, index) {
+                var tr = document.createElement("tr");
+                var reviewState = getReviewState(tx);
+                tx.review_state = reviewState;
+                if (reviewState === "needs") {
+                    tr.classList.add("needs-review-row");
+                }
+
+                var pageIndex = Number(tx.page_index != null ? tx.page_index : 0);
+                var rowBbox = tx.bbox_row || tx.bbox || null;
+                var dateBbox = tx.bbox_date || rowBbox;
+                var descBbox = tx.bbox_description || rowBbox;
+                var amountBbox = tx.bbox_amount || rowBbox;
+                var balanceBbox = tx.bbox_balance || rowBbox;
+                var chargesBbox = tx.bbox_charges || rowBbox;
+
+                tr.dataset.pageIndex = String(pageIndex);
+
+                var indexTd = document.createElement("td");
+                indexTd.textContent = String(index + 1);
+
+                var dateTd = document.createElement("td");
+                dateTd.tabIndex = 0;
+                dateTd.dataset.rowIndex = String(index);
+                dateTd.dataset.field = "date";
+                dateTd.textContent = tx.date != null ? tx.date : "";
+                if (dateBbox) dateTd.dataset.bbox = JSON.stringify(dateBbox);
+
+                var descTd = document.createElement("td");
+                descTd.className = "desc-cell";
+                descTd.tabIndex = 0;
+                descTd.dataset.rowIndex = String(index);
+                descTd.dataset.field = "description";
+                descTd.textContent = tx.description != null ? tx.description : "";
+                if (descBbox) descTd.dataset.bbox = JSON.stringify(descBbox);
+
+                var amountTd = document.createElement("td");
+                amountTd.className = "num-cell";
+                amountTd.tabIndex = 0;
+                amountTd.dataset.rowIndex = String(index);
+                amountTd.dataset.field = "amount";
+                amountTd.textContent = formatCurrency(tx.amount);
+                if (amountBbox) amountTd.dataset.bbox = JSON.stringify(amountBbox);
+
+                var balanceTd = document.createElement("td");
+                balanceTd.className = "num-cell";
+                balanceTd.tabIndex = 0;
+                balanceTd.dataset.rowIndex = String(index);
+                balanceTd.dataset.field = "balance";
+                balanceTd.textContent = formatCurrency(tx.balance);
+                if (balanceBbox) balanceTd.dataset.bbox = JSON.stringify(balanceBbox);
+
+                var chargesTd = document.createElement("td");
+                chargesTd.className = "num-cell";
+                chargesTd.tabIndex = 0;
+                chargesTd.dataset.rowIndex = String(index);
+                chargesTd.dataset.field = "charges";
+                chargesTd.textContent = formatCurrency(tx.charges);
+                if (chargesBbox) chargesTd.dataset.bbox = JSON.stringify(chargesBbox);
+
+                var reviewTd = document.createElement("td");
+                reviewTd.className = "review-cell";
+                reviewTd.tabIndex = 0;
+                reviewTd.dataset.rowIndex = String(index);
+                reviewTd.dataset.field = "review_state";
+
+                var checkbox = document.createElement("span");
+                checkbox.className = "review-checkbox";
+                if (reviewState === "needs") {
+                    checkbox.classList.add("review-needs");
+                    checkbox.textContent = "!";
+                } else if (reviewState === "done") {
+                    checkbox.classList.add("review-done");
+                    checkbox.textContent = "✓";
+                } else {
+                    checkbox.classList.add("review-blank");
+                    checkbox.textContent = "";
+                }
+                reviewTd.appendChild(checkbox);
+
+                var cells = [indexTd, dateTd, descTd, amountTd, balanceTd, chargesTd, reviewTd];
+                cells.forEach(function (td) { tr.appendChild(td); });
+
+                function attachCellHover(td) {
+                    td.addEventListener("mouseenter", async function () {
+                        cancelClear();
+                        var page = pageIndex + 1;
+                        if (pdfDoc && page !== currentPage) {
+                            currentPage = page;
+                            await renderPage(currentPage);
+                        }
+                        var bbox = td.dataset.bbox ? JSON.parse(td.dataset.bbox) : rowBbox;
+                        drawHighlight(bbox);
+                    });
+                    td.addEventListener("mouseleave", function () {
+                        scheduleClear();
+                    });
+                }
+
+                [dateTd, descTd, amountTd, balanceTd, chargesTd].forEach(attachCellHover);
+
+                function attachEdit(td, field, isNumeric) {
+                    td.addEventListener("dblclick", function (e) {
+                        e.stopPropagation();
+                        startEdit(td, index, field, isNumeric);
+                    });
+                    td.addEventListener("keydown", function (e) {
+                        if (e.key === "Enter" && !td.dataset.editing) {
+                            e.preventDefault();
+                            startEdit(td, index, field, isNumeric);
+                        }
+                    });
+                }
+
+                attachEdit(dateTd, "date", false);
+                attachEdit(descTd, "description", false);
+                attachEdit(amountTd, "amount", true);
+                attachEdit(balanceTd, "balance", true);
+                attachEdit(chargesTd, "charges", true);
+
+                reviewTd.addEventListener("click", function (e) {
+                    e.stopPropagation();
+                    var current = getReviewState(tx);
+                    var next;
+                    // "needs" is system-driven only; users can clear it to "done"
+                    // but cannot manually set a row to "needs".
+                    if (current === "needs") {
+                        next = "done";
+                    } else if (current === "blank") {
+                        next = "done";
+                    } else {
+                        next = "blank";
+                    }
+                    var oldState = current;
+                    var newState = next;
+                    tx.review_state = newState;
+                    tx.needs_review = newState === "needs";
+                    pushAction({ txIndex: index, field: "review_state", oldValue: oldState, newValue: newState });
+                    renderTable();
+                });
+
+                tr.addEventListener("click", async function () {
+                    cancelClear();
+                    var page = pageIndex + 1;
+                    if (pdfDoc && page !== currentPage) {
+                        currentPage = page;
+                        await renderPage(currentPage);
+                    }
+                    drawHighlight(rowBbox);
+                });
+
+                tbody.appendChild(tr);
+            });
+        }
+
+        async function loadTransactions() {
+            setTableStatus("Loading transactions...");
+            try {
+                var resp = await fetch("/preview/data/" + sessionId);
+                if (!resp.ok) {
+                    var text = await resp.text().catch(function () { return ""; });
+                    setTableStatus("Failed to load transactions: " + (text || resp.status));
+                    return;
+                }
+                var payload = await resp.json();
+                transactions = Array.isArray(payload.transactions) ? payload.transactions.slice() : [];
+                undoStack = [];
+                redoStack = [];
+                dirtyCount = 0;
+                renderTable();
+                updateToolbarState();
+            } catch (err) {
+                console.error(err);
+                setTableStatus("Failed to load transactions: " + (err && err.message ? err.message : String(err)));
+            }
+        }
+
+        function applyChange(action, useNewValue) {
+            var tx = transactions[action.txIndex];
+            if (!tx) return;
+            var value = useNewValue ? action.newValue : action.oldValue;
+            tx[action.field] = value;
+        }
+
+        function undo() {
+            var action = undoStack.pop();
+            if (!action) return;
+            applyChange(action, false);
+            redoStack.push(action);
+            setDirty(-1);
+            renderTable();
+        }
+
+        function redo() {
+            var action = redoStack.pop();
+            if (!action) return;
+            applyChange(action, true);
+            undoStack.push(action);
+            setDirty(1);
+            renderTable();
+        }
+
+        function startEdit(td, rowIndex, field, isNumeric) {
+            if (!td || td.dataset.editing === "1") return;
+            var idx = Number(rowIndex);
+            var tx = transactions[idx];
+            if (!tx) return;
+
+            td.dataset.editing = "1";
+            var original = tx[field];
+            var originalDisplay;
+            if (isNumeric) {
+                originalDisplay = formatCurrency(original);
+            } else {
+                originalDisplay = original == null ? "" : String(original);
+            }
+
+            var input = document.createElement("input");
+            input.type = "text";
+            input.value = originalDisplay;
+            input.className = "cell-input";
+            td.innerHTML = "";
+            td.appendChild(input);
+            input.focus();
+            input.select();
+
+            function finish(commit) {
+                td.dataset.editing = "";
+                if (!commit) {
+                    renderTable();
+                    return;
+                }
+                var newRaw = input.value.trim();
+                var newValue = newRaw;
+                if (isNumeric) {
+                    if (newRaw === "") {
+                        newValue = null;
+                    } else {
+                        var parsed = Number(newRaw.replace(/\\s/g, ""));
+                        if (!isNaN(parsed)) {
+                            newValue = parsed;
+                        }
+                    }
+                }
+
+                var oldVal = original;
+                if (String(oldVal) === String(newValue)) {
+                    renderTable();
+                    return;
+                }
+
+                tx[field] = newValue;
+                pushAction({ txIndex: idx, field: field, oldValue: oldVal, newValue: newValue });
+                renderTable();
+            }
+
+            input.addEventListener("keydown", function (e) {
+                if (e.key === "Enter") {
+                    e.preventDefault();
+                    finish(true);
+                } else if (e.key === "Escape") {
+                    e.preventDefault();
+                    finish(false);
+                }
+            });
+
+            input.addEventListener("blur", function () {
+                finish(true);
+            });
+        }
+
+        /* ── Draggable resize handle ── */
+        (function initResizeHandle() {
+            var handle = document.getElementById("resizeHandle");
+            var layout = document.getElementById("reviewLayout");
+            var pdfPanel = document.getElementById("pdfPanel");
+            var tablePanel = document.getElementById("tablePanel");
+            if (!handle || !layout || !pdfPanel || !tablePanel) return;
+
+            var dragging = false;
+
+            handle.addEventListener("mousedown", function (e) {
+                e.preventDefault();
+                dragging = true;
+                handle.classList.add("active");
+                document.body.style.cursor = "col-resize";
+                document.body.style.userSelect = "none";
+            });
+
+            document.addEventListener("mousemove", function (e) {
+                if (!dragging) return;
+                var layoutRect = layout.getBoundingClientRect();
+                var offsetX = e.clientX - layoutRect.left;
+                var totalW = layoutRect.width;
+                var handleW = handle.offsetWidth;
+
+                var minPdf = 200;
+                var minTable = 300;
+                var pdfW = clamp(offsetX - handleW / 2, minPdf, totalW - minTable - handleW);
+
+                pdfPanel.style.width = pdfW + "px";
+            });
+
+            document.addEventListener("mouseup", function () {
+                if (!dragging) return;
+                dragging = false;
+                handle.classList.remove("active");
+                document.body.style.cursor = "";
+                document.body.style.userSelect = "";
+            });
+        })();
+
+        function initColumnResize() {
+            var table = document.getElementById("transactionsTable");
+            var colgroup = document.getElementById("transactionsColgroup");
+            if (!table || !table.tHead || !colgroup) return;
+
+            var headers = table.tHead.rows[0].cells;
+            var cols = colgroup.children;
+
+            var activeCol = null;
+            var startX = 0;
+            var startWidth = 0;
+
+            function onMouseMove(e) {
+                if (!activeCol) return;
+                var dx = e.clientX - startX;
+                var newWidth = Math.max(40, startWidth + dx);
+                activeCol.style.width = newWidth + "px";
+            }
+
+            function onMouseUp() {
+                if (!activeCol) return;
+                activeCol = null;
+                document.removeEventListener("mousemove", onMouseMove);
+                document.removeEventListener("mouseup", onMouseUp);
+                document.body.style.cursor = "";
+                document.body.style.userSelect = "";
+            }
+
+            for (var i = 0; i < headers.length && i < cols.length; i++) {
+                (function (index) {
+                    var th = headers[index];
+                    var col = cols[index];
+                    th.style.position = "relative";
+                    var resizer = document.createElement("span");
+                    resizer.className = "col-resizer";
+                    th.appendChild(resizer);
+
+                    resizer.addEventListener("mousedown", function (e) {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        activeCol = col;
+                        startX = e.clientX;
+                        startWidth = th.offsetWidth || col.offsetWidth || 80;
+                        document.body.style.cursor = "col-resize";
+                        document.body.style.userSelect = "none";
+                        document.addEventListener("mousemove", onMouseMove);
+                        document.addEventListener("mouseup", onMouseUp);
+                    });
+                })(i);
+            }
+        }
+
+        function initToolbar() {
+            var undoBtn = document.getElementById("undoBtn");
+            var redoBtn = document.getElementById("redoBtn");
+            var saveBtn = document.getElementById("saveBtn");
+            var downloadBtn = document.getElementById("downloadBtn");
+            function getCookie(name) {
+                var target = name + "=";
+                var parts = document.cookie ? document.cookie.split(";") : [];
+                for (var i = 0; i < parts.length; i++) {
+                    var trimmed = parts[i].trim();
+                    if (trimmed.indexOf(target) === 0) return decodeURIComponent(trimmed.substring(target.length));
+                }
+                return "";
+            }
+
+            if (undoBtn) undoBtn.addEventListener("click", function () { undo(); });
+            if (redoBtn) redoBtn.addEventListener("click", function () { redo(); });
+
+            if (saveBtn) {
+                saveBtn.addEventListener("click", async function () {
+                    if (dirtyCount === 0) return;
+                    setTableStatus("Saving...");
+                    try {
+                        var resp = await fetch("/preview/data/" + sessionId, {
+                            method: "PUT",
+                            headers: {
+                                "Content-Type": "application/json",
+                                "X-CSRF-Token": getCookie("csrf_token"),
+                            },
+                            credentials: "same-origin",
+                            body: JSON.stringify({ transactions: transactions }),
+                        });
+                        if (!resp.ok) {
+                            var text = await resp.text().catch(function () { return ""; });
+                            setTableStatus("Save failed: " + (text || resp.status));
+                            return;
+                        }
+                        dirtyCount = 0;
+                        setTableStatus("Saved.");
+                    } catch (err) {
+                        console.error(err);
+                        setTableStatus("Save failed: " + (err && err.message ? err.message : String(err)));
+                    } finally {
+                        updateToolbarState();
+                    }
+                });
+            }
+
+            if (downloadBtn) {
+                downloadBtn.addEventListener("click", function () {
+                    window.location.href = "/preview/download/" + sessionId;
+                });
+            }
+
+            document.addEventListener("keydown", function (e) {
+                if (e.ctrlKey && !e.shiftKey && e.key.toLowerCase() === "z") {
+                    e.preventDefault();
+                    undo();
+                } else if ((e.ctrlKey && e.key.toLowerCase() === "y") || (e.ctrlKey && e.shiftKey && e.key.toLowerCase() === "z")) {
+                    e.preventDefault();
+                    redo();
+                }
+            });
+
+            window.addEventListener("beforeunload", function (e) {
+                if (dirtyCount > 0) {
+                    e.preventDefault();
+                    e.returnValue = "";
+                }
+            });
+
+            updateToolbarState();
+        }
+
+        document.addEventListener("DOMContentLoaded", async function () {
+            var zoomSlider = document.getElementById("zoomSlider");
+            var zoomValue = document.getElementById("zoomValue");
+
+            if (zoomSlider && zoomValue) {
+                zoomSlider.value = String(currentZoom);
+                zoomValue.textContent = Math.round(currentZoom * 100) + "%";
+
+                zoomSlider.addEventListener("input", async function () {
+                    var value = Number(zoomSlider.value || currentZoom);
+                    if (!value || value <= 0.25) return;
+                    currentZoom = value;
+                    zoomValue.textContent = Math.round(currentZoom * 100) + "%";
+                    if (pdfDoc) {
+                        await renderPage(currentPage);
+                    }
+                });
+            }
+
+            /* Set initial PDF panel width to 45% of available space */
+            var layout = document.getElementById("reviewLayout");
+            var pdfPanel = document.getElementById("pdfPanel");
+            if (layout && pdfPanel && window.innerWidth > 1024) {
+                pdfPanel.style.width = Math.round(layout.clientWidth * 0.45) + "px";
+            }
+
+            initToolbar();
+            initColumnResize();
+            await Promise.all([loadPdf(), loadTransactions()]);
+        });
+    })();
+</script>
+</body>
+</html>
