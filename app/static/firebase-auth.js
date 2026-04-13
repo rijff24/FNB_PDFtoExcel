@@ -9393,7 +9393,44 @@
           signOutInFlight = false;
         }
       }
-      async function handleExtractSubmit(event) {
+      const BANK_STORAGE_KEY = "lastSelectedBank";
+      const ENABLED_BANK_OPTIONS = /* @__PURE__ */ new Set([
+        "fnb",
+        "capitec",
+        "capitec_personal",
+        "standard_bank"
+      ]);
+      function normalizeBankOption(value) {
+        const raw = String(value || "").trim().toLowerCase();
+        if (!raw) return "fnb";
+        if (raw === "standardbank") return "standard_bank";
+        if (raw === "capitecpersonal") return "capitec_personal";
+        if (raw === "nedbank") return "netbank";
+        return raw;
+      }
+      function restoreBankSelection() {
+        const bankSelect = $("bank");
+        if (!bankSelect) return;
+        let stored = "";
+        try {
+          stored = localStorage.getItem(BANK_STORAGE_KEY) || "";
+        } catch (_err) {
+        }
+        const normalized = normalizeBankOption(stored || bankSelect.value || "fnb");
+        bankSelect.value = ENABLED_BANK_OPTIONS.has(normalized) ? normalized : "fnb";
+      }
+      function persistBankSelection() {
+        const bankSelect = $("bank");
+        if (!bankSelect) return;
+        const normalized = normalizeBankOption(bankSelect.value || "fnb");
+        const safeValue = ENABLED_BANK_OPTIONS.has(normalized) ? normalized : "fnb";
+        bankSelect.value = safeValue;
+        try {
+          localStorage.setItem(BANK_STORAGE_KEY, safeValue);
+        } catch (_err) {
+        }
+      }
+      async function handleExtractSubmit(event, forceEnableOcr = false) {
         event.preventDefault();
         const user = auth.currentUser;
         if (!user) {
@@ -9402,12 +9439,20 @@
         }
         const form = $("extractForm");
         const formData = new FormData(form);
-        const enableOcr = $("enable_ocr").checked;
+        const ocrToggle = $("enable_ocr");
+        if (forceEnableOcr && ocrToggle) {
+          ocrToggle.checked = true;
+        }
+        const enableOcr = !!(ocrToggle && ocrToggle.checked);
         if (enableOcr) {
           formData.set("enable_ocr", "true");
         } else {
           formData.delete("enable_ocr");
         }
+        const bankSelect = $("bank");
+        const selectedBank = normalizeBankOption(bankSelect ? bankSelect.value : "fnb");
+        formData.set("bank", ENABLED_BANK_OPTIONS.has(selectedBank) ? selectedBank : "fnb");
+        persistBankSelection();
         $("extractStatus").textContent = "Preparing preview...";
         const resp = await apiFetchWithCsrf("/extract/preview", {
           method: "POST",
@@ -9420,6 +9465,13 @@
             const detail = body && body.detail;
             if (detail && typeof detail === "object" && detail.code === "billing_limit_reached") {
               msg = "You\u2019ve reached your monthly billing limit. You can increase it on the Billing page.";
+            } else if (detail && typeof detail === "object" && detail.code === "ocr_recommended") {
+              msg = detail.message || "OCR is required for this statement.";
+              const shouldRetry = !enableOcr && window.confirm(`${msg}\n\nEnable OCR and retry now?`);
+              if (shouldRetry) {
+                await handleExtractSubmit(event, true);
+                return;
+              }
             } else if (detail && typeof detail === "string") {
               msg = detail;
             } else if (typeof detail === "object" && detail.message) {
@@ -9496,6 +9548,13 @@
       document.addEventListener("DOMContentLoaded", () => {
         startHomeOverlay();
         setTimeout(() => finishHomeOverlay(), 8e3);
+        restoreBankSelection();
+        const bankSelect = $("bank");
+        if (bankSelect) {
+          bankSelect.addEventListener("change", () => {
+            persistBankSelection();
+          });
+        }
         $("googleSignInBtn").addEventListener("click", async () => {
           try {
             await signInWithGoogle();

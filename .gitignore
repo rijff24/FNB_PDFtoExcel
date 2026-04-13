@@ -36,3 +36,8 @@ temp/
 
 # Document AI response cache
 .cache/
+
+# Confidential local bank statement samples
+docs/samplePDF/*.pdf
+docs/samplePDF/*.PDF
+docs/samplePDF/*_parsed_output.json

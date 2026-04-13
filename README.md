@@ -1,6 +1,6 @@
-# FNB PDF to Excel (Cloud Run Web App)
+# Bank Statement To Excel (Cloud Run Web App)
 
-Production-ready v1 web service that converts FNB statement PDFs to Excel.
+Production-ready v1 web service that converts South African bank statement PDFs to Excel.
 
 ## What it does
 

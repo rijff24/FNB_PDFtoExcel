@@ -38,3 +38,4 @@ services:
       RECONCILIATION_COLLECTION: "${RECONCILIATION_COLLECTION:-cost_reconciliation_daily}"
     volumes:
       - "${APPDATA}/gcloud/application_default_credentials.json:/gcp/application_default_credentials.json:ro"
+      - "./.cache:/app/.cache"

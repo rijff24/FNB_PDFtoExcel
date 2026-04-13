@@ -102,13 +102,31 @@ button:hover {
 input[type="email"],
 input[type="password"],
 input[type="text"],
-input[type="number"] {
+input[type="number"],
+select {
     padding: 8px 10px;
     border: 1px solid #d0d5dd;
     border-radius: 6px;
     outline: none;
     width: 100%;
     box-sizing: border-box;
+}
+
+.extract-options-row {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 12px;
+}
+
+.bank-select-wrap {
+    margin-left: auto;
+    min-width: 240px;
+}
+
+.bank-select-wrap label {
+    display: block;
+    margin-bottom: 6px;
 }
 
 #authCard .auth-title,

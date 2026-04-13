@@ -9,6 +9,7 @@ from uuid import uuid4
 
 from app.services.auth import AuthorizedUser
 from app.services.access_control import authenticate_request, authenticate_request_with_mode
+from app.services.banks import get_enabled_bank_profile, list_bank_options
 from app.services.billing import DEFAULT_TIER_BRACKETS, DocumentCostBreakdown, billing_enabled, calculate_document_cost, evaluate_limits, tier_price_usd
 from app.services.csrf import should_enforce_csrf, validate_double_submit_csrf
 from app.services.admin_store import apply_user_credits, get_billing_pricing_global, get_user_profile
@@ -127,6 +128,18 @@ def _enforce_ocr_quotas(path: str, user: AuthorizedUser, pdf_bytes: bytes) -> No
 def _count_pdf_pages(pdf_bytes: bytes) -> int:
     reader = PdfReader(io.BytesIO(pdf_bytes))
     return len(reader.pages)
+
+
+def _ocr_recommended_detail(bank_id: str) -> dict[str, object]:
+    return {
+        "code": "ocr_recommended",
+        "message": (
+            "This statement could not be extracted without OCR. "
+            "Please enable OCR and retry."
+        ),
+        "suggested_enable_ocr": True,
+        "bank": bank_id,
+    }
 
 
 def _billing_precheck(
@@ -319,7 +332,14 @@ def _record_billing_event(
 async def index(request: Request):
     templates = request.app.state.templates
     # Starlette's TemplateResponse signature is: (request, name, context)
-    return templates.TemplateResponse(request, "index.html", {"request": request})
+    return templates.TemplateResponse(
+        request,
+        "index.html",
+        {
+            "request": request,
+            "bank_options": list_bank_options(),
+        },
+    )
 
 
 @router.post("/extract")
@@ -327,6 +347,7 @@ async def extract(
     request: Request,
     file: UploadFile = File(...),
     enable_ocr: bool = Form(False),
+    bank: str = Form("fnb"),
     authorization: str | None = Header(default=None),
 ) -> StreamingResponse:
     path = "/extract"
@@ -334,12 +355,16 @@ async def extract(
     # Authorization must be enforced before any PDF bytes are read or any OCR/cost work begins.
     user = _authenticate_mutating_request(request, authorization, path)
 
+    selected_bank_profile = get_enabled_bank_profile(bank)
+    selected_bank = selected_bank_profile.id
+
     log_event(
         logging.INFO,
         "auth_ok_request",
         path=path,
         user_email=user.email,
         uid=user.uid,
+        extra={"bank": selected_bank},
     )
 
     if file.content_type != "application/pdf":
@@ -354,10 +379,10 @@ async def extract(
     try:
         if enable_ocr:
             _enforce_ocr_quotas(path, user, pdf_bytes)
-            text = extract_text_with_document_ai(pdf_bytes)
-            transactions = parse_transactions_from_text(text)
+            text = extract_text_with_document_ai(pdf_bytes, bank_id=selected_bank)
+            transactions = parse_transactions_from_text(text, bank_id=selected_bank)
         else:
-            transactions = parse_transactions_from_pdf_bytes(pdf_bytes)
+            transactions = parse_transactions_from_pdf_bytes(pdf_bytes, bank_id=selected_bank)
     except RuntimeError as exc:
         _record_billing_event(
             path=path,
@@ -396,10 +421,9 @@ async def extract(
             uid=user.uid,
             details="No transactions were extracted from this statement.",
         )
-        raise HTTPException(
-            status_code=422,
-            detail="No transactions were extracted from this statement.",
-        )
+        if not enable_ocr and selected_bank_profile.recommend_ocr_when_empty:
+            raise HTTPException(status_code=422, detail=_ocr_recommended_detail(selected_bank))
+        raise HTTPException(status_code=422, detail="No transactions were extracted from this statement.")
 
     excel_bytes = build_excel_bytes(transactions)
     output_filename = (file.filename or "statement").rsplit(".", 1)[0] + "_transactions.xlsx"
@@ -410,7 +434,7 @@ async def extract(
         path=path,
         user_email=user.email,
         uid=user.uid,
-        extra={"transaction_count": len(transactions)},
+        extra={"transaction_count": len(transactions), "bank": selected_bank},
     )
     _record_billing_event(
         path=path,
@@ -433,6 +457,7 @@ async def extract_preview(
     request: Request,
     file: UploadFile = File(...),
     enable_ocr: bool = Form(False),
+    bank: str = Form("fnb"),
     authorization: str | None = Header(default=None),
 ) -> JSONResponse:
     path = "/extract/preview"
@@ -440,12 +465,16 @@ async def extract_preview(
     # Reuse the same authorization flow as the main extract endpoint.
     user = _authenticate_mutating_request(request, authorization, path)
 
+    selected_bank_profile = get_enabled_bank_profile(bank)
+    selected_bank = selected_bank_profile.id
+
     log_event(
         logging.INFO,
         "auth_ok_request",
         path=path,
         user_email=user.email,
         uid=user.uid,
+        extra={"bank": selected_bank},
     )
 
     if file.content_type != "application/pdf":
@@ -460,11 +489,11 @@ async def extract_preview(
     try:
         if enable_ocr:
             _enforce_ocr_quotas(path, user, pdf_bytes)
-            document = process_document_with_layout(pdf_bytes)
-            transactions = parse_transactions_from_document(document)
+            document = process_document_with_layout(pdf_bytes, bank_id=selected_bank)
+            transactions = parse_transactions_from_document(document, bank_id=selected_bank)
             page_count = len(getattr(document, "pages", []) or [])
         else:
-            transactions = parse_transactions_from_pdf_bytes_with_layout(pdf_bytes)
+            transactions = parse_transactions_from_pdf_bytes_with_layout(pdf_bytes, bank_id=selected_bank)
             page_count = max(
                 [int(tx.get("page_index", 0)) for tx in transactions if isinstance(tx, dict)] + [-1]
             ) + 1
@@ -506,10 +535,9 @@ async def extract_preview(
             uid=user.uid,
             details="No transactions were extracted from this statement.",
         )
-        raise HTTPException(
-            status_code=422,
-            detail="No transactions were extracted from this statement.",
-        )
+        if not enable_ocr and selected_bank_profile.recommend_ocr_when_empty:
+            raise HTTPException(status_code=422, detail=_ocr_recommended_detail(selected_bank))
+        raise HTTPException(status_code=422, detail="No transactions were extracted from this statement.")
 
     # Attach a stable per-session ID for the review UI and store PDF bytes for rendering.
     session_id = uuid4().hex
@@ -525,6 +553,8 @@ async def extract_preview(
             tx_with_meta["needs_review"] = False
         if "bbox_row" in tx_with_meta and "bbox" not in tx_with_meta:
             tx_with_meta["bbox"] = tx_with_meta["bbox_row"]
+        if "bank_id" not in tx_with_meta:
+            tx_with_meta["bank_id"] = selected_bank
         enriched_transactions.append(tx_with_meta)
 
     save_preview_session(session_id, pdf_bytes, enriched_transactions)
@@ -544,6 +574,7 @@ async def extract_preview(
         extra={
             "transaction_count": len(enriched_transactions),
             "session_id": session_id,
+            "bank": selected_bank,
         },
     )
     _record_billing_event(

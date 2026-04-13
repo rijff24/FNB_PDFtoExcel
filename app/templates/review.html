@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>FNB Statement Review</title>
+    <title>Bank Statement Review</title>
     <link rel="stylesheet" href="/static/style.css" />
     <style>
         body {
@@ -236,6 +236,7 @@
             text-align: left;
             white-space: nowrap;
             overflow: hidden;
+            text-overflow: ellipsis;
         }
 
         table.transactions td.desc-cell {
@@ -254,13 +255,16 @@
         }
 
         /* Initial column widths (user can override via header drag) */
-        .col-index   { width: 3rem; }
+        .col-index   { width: 2.5rem; }
+        .col-post-date { width: 5rem; }
+        .col-transaction-date { width: 5rem; }
         .col-date    { width: 4.5rem; }
-        .col-desc    { width: 22rem; }
-        .col-amount  { width: 7.5rem; }
-        .col-balance { width: 8rem; }
-        .col-charges { width: 6rem; }
-        .col-review  { width: 4rem; }
+        .col-desc    { width: 14rem; }
+        .col-reference { width: 16rem; }
+        .col-amount  { width: 6.5rem; }
+        .col-balance { width: 7rem; }
+        .col-charges { width: 5rem; }
+        .col-review  { width: 2.5rem; }
 
         table.transactions thead th {
             position: sticky;
@@ -432,6 +436,11 @@
         const pdfStatus = document.getElementById("pdfStatus");
         const tableStatus = document.getElementById("tableStatus");
         const tbody = document.querySelector("#transactionsTable tbody");
+        const transactionsTable = document.getElementById("transactionsTable");
+        const transactionsColgroup = document.getElementById("transactionsColgroup");
+        const transactionsHeaderRow = transactionsTable && transactionsTable.tHead
+            ? transactionsTable.tHead.rows[0]
+            : null;
 
         // In-memory state
         let transactions = [];
@@ -444,6 +453,95 @@
         let currentZoom = 1.5;
         let lastBbox = null;
         let clearTimer = null;
+        let activeColumns = [];
+        let activeBankId = "fnb";
+
+        var BANK_TABLE_TEMPLATES = {
+            fnb: [
+                { field: "date", label: "Date", colClass: "col-date", bboxField: "bbox_date", numeric: false, editable: true, descCell: false },
+                { field: "description", label: "Description", colClass: "col-desc", bboxField: "bbox_description", numeric: false, editable: true, descCell: true },
+                { field: "amount", label: "Amount", colClass: "col-amount", bboxField: "bbox_amount", numeric: true, editable: true, descCell: false },
+                { field: "balance", label: "Balance", colClass: "col-balance", bboxField: "bbox_balance", numeric: true, editable: true, descCell: false },
+                { field: "charges", label: "Charges", colClass: "col-charges", bboxField: "bbox_charges", numeric: true, editable: true, descCell: false }
+            ],
+            capitec: [
+                { field: "post_date", label: "Post Date", colClass: "col-post-date", bboxField: "bbox_post_date", numeric: false, editable: true, descCell: false },
+                { field: "transaction_date", label: "Trans. Date", colClass: "col-transaction-date", bboxField: "bbox_transaction_date", numeric: false, editable: true, descCell: false },
+                { field: "description", label: "Description", colClass: "col-desc", bboxField: "bbox_description", numeric: false, editable: true, descCell: true },
+                { field: "reference", label: "Reference", colClass: "col-reference", bboxField: "bbox_reference", numeric: false, editable: true, descCell: true },
+                { field: "charges", label: "Fees", colClass: "col-charges", bboxField: "bbox_charges", numeric: true, editable: true, descCell: false },
+                { field: "amount", label: "Amount", colClass: "col-amount", bboxField: "bbox_amount", numeric: true, editable: true, descCell: false },
+                { field: "balance", label: "Balance", colClass: "col-balance", bboxField: "bbox_balance", numeric: true, editable: true, descCell: false }
+            ],
+            capitec_personal: [
+                { field: "date", label: "Date", colClass: "col-date", bboxField: "bbox_date", numeric: false, editable: true, descCell: false },
+                { field: "description", label: "Description", colClass: "col-desc", bboxField: "bbox_description", numeric: false, editable: true, descCell: true },
+                { field: "amount", label: "Amount", colClass: "col-amount", bboxField: "bbox_amount", numeric: true, editable: true, descCell: false },
+                { field: "balance", label: "Balance", colClass: "col-balance", bboxField: "bbox_balance", numeric: true, editable: true, descCell: false },
+                { field: "charges", label: "Fees", colClass: "col-charges", bboxField: "bbox_charges", numeric: true, editable: true, descCell: false }
+            ],
+            standard_bank: [
+                { field: "date", label: "Date", colClass: "col-date", bboxField: "bbox_date", numeric: false, editable: true, descCell: false },
+                { field: "description", label: "Description", colClass: "col-desc", bboxField: "bbox_description", numeric: false, editable: true, descCell: true },
+                { field: "amount", label: "Amount", colClass: "col-amount", bboxField: "bbox_amount", numeric: true, editable: true, descCell: false },
+                { field: "balance", label: "Balance", colClass: "col-balance", bboxField: "bbox_balance", numeric: true, editable: true, descCell: false },
+                { field: "charges", label: "Fees", colClass: "col-charges", bboxField: "bbox_charges", numeric: true, editable: true, descCell: false }
+            ]
+        };
+
+        function inferActiveBankId() {
+            if (!transactions || !transactions.length) return "fnb";
+            var candidate = String(transactions[0].bank_id || "").trim().toLowerCase();
+            if (candidate && BANK_TABLE_TEMPLATES[candidate]) {
+                return candidate;
+            }
+            var hasPostDate = transactions.some(function (tx) { return tx.post_date != null && String(tx.post_date).trim() !== ""; });
+            var hasTransDate = transactions.some(function (tx) { return tx.transaction_date != null && String(tx.transaction_date).trim() !== ""; });
+            var hasReference = transactions.some(function (tx) { return tx.reference != null && String(tx.reference).trim() !== ""; });
+            if (hasPostDate || hasTransDate || hasReference) {
+                return "capitec";
+            }
+            return "fnb";
+        }
+
+        function buildTableColumns() {
+            activeBankId = inferActiveBankId();
+            return (BANK_TABLE_TEMPLATES[activeBankId] || BANK_TABLE_TEMPLATES.fnb).slice();
+        }
+
+        function configureTableStructure() {
+            if (!transactionsColgroup || !transactionsHeaderRow) return;
+            activeColumns = buildTableColumns();
+            transactionsColgroup.innerHTML = "";
+            transactionsHeaderRow.innerHTML = "";
+
+            var indexCol = document.createElement("col");
+            indexCol.className = "col-index";
+            transactionsColgroup.appendChild(indexCol);
+            var indexTh = document.createElement("th");
+            indexTh.textContent = "#";
+            transactionsHeaderRow.appendChild(indexTh);
+
+            activeColumns.forEach(function (col) {
+                var colEl = document.createElement("col");
+                colEl.className = col.colClass || "";
+                transactionsColgroup.appendChild(colEl);
+
+                var th = document.createElement("th");
+                th.textContent = col.label;
+                if (col.numeric) th.className = "num-header";
+                transactionsHeaderRow.appendChild(th);
+            });
+
+            var reviewCol = document.createElement("col");
+            reviewCol.className = "col-review";
+            transactionsColgroup.appendChild(reviewCol);
+            var reviewTh = document.createElement("th");
+            reviewTh.textContent = "Review";
+            transactionsHeaderRow.appendChild(reviewTh);
+
+            initColumnResize();
+        }
 
         function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
 
@@ -645,6 +743,9 @@
                 return;
             }
             setTableStatus("");
+            if (!activeColumns || !activeColumns.length) {
+                configureTableStructure();
+            }
 
             transactions.forEach(function (tx, index) {
                 var tr = document.createElement("tr");
@@ -656,55 +757,26 @@
 
                 var pageIndex = Number(tx.page_index != null ? tx.page_index : 0);
                 var rowBbox = tx.bbox_row || tx.bbox || null;
-                var dateBbox = tx.bbox_date || rowBbox;
-                var descBbox = tx.bbox_description || rowBbox;
-                var amountBbox = tx.bbox_amount || rowBbox;
-                var balanceBbox = tx.bbox_balance || rowBbox;
-                var chargesBbox = tx.bbox_charges || rowBbox;
 
                 tr.dataset.pageIndex = String(pageIndex);
 
                 var indexTd = document.createElement("td");
                 indexTd.textContent = String(index + 1);
+                var valueTds = [];
+                activeColumns.forEach(function (col) {
+                    var td = document.createElement("td");
+                    td.tabIndex = 0;
+                    td.dataset.rowIndex = String(index);
+                    td.dataset.field = col.field;
+                    if (col.descCell) td.classList.add("desc-cell");
+                    if (col.numeric) td.classList.add("num-cell");
 
-                var dateTd = document.createElement("td");
-                dateTd.tabIndex = 0;
-                dateTd.dataset.rowIndex = String(index);
-                dateTd.dataset.field = "date";
-                dateTd.textContent = tx.date != null ? tx.date : "";
-                if (dateBbox) dateTd.dataset.bbox = JSON.stringify(dateBbox);
-
-                var descTd = document.createElement("td");
-                descTd.className = "desc-cell";
-                descTd.tabIndex = 0;
-                descTd.dataset.rowIndex = String(index);
-                descTd.dataset.field = "description";
-                descTd.textContent = tx.description != null ? tx.description : "";
-                if (descBbox) descTd.dataset.bbox = JSON.stringify(descBbox);
-
-                var amountTd = document.createElement("td");
-                amountTd.className = "num-cell";
-                amountTd.tabIndex = 0;
-                amountTd.dataset.rowIndex = String(index);
-                amountTd.dataset.field = "amount";
-                amountTd.textContent = formatCurrency(tx.amount);
-                if (amountBbox) amountTd.dataset.bbox = JSON.stringify(amountBbox);
-
-                var balanceTd = document.createElement("td");
-                balanceTd.className = "num-cell";
-                balanceTd.tabIndex = 0;
-                balanceTd.dataset.rowIndex = String(index);
-                balanceTd.dataset.field = "balance";
-                balanceTd.textContent = formatCurrency(tx.balance);
-                if (balanceBbox) balanceTd.dataset.bbox = JSON.stringify(balanceBbox);
-
-                var chargesTd = document.createElement("td");
-                chargesTd.className = "num-cell";
-                chargesTd.tabIndex = 0;
-                chargesTd.dataset.rowIndex = String(index);
-                chargesTd.dataset.field = "charges";
-                chargesTd.textContent = formatCurrency(tx.charges);
-                if (chargesBbox) chargesTd.dataset.bbox = JSON.stringify(chargesBbox);
+                    var value = tx[col.field];
+                    td.textContent = col.numeric ? formatCurrency(value) : (value != null ? String(value) : "");
+                    var bbox = tx[col.bboxField] || rowBbox;
+                    if (bbox) td.dataset.bbox = JSON.stringify(bbox);
+                    valueTds.push({ td: td, col: col });
+                });
 
                 var reviewTd = document.createElement("td");
                 reviewTd.className = "review-cell";
@@ -726,7 +798,7 @@
                 }
                 reviewTd.appendChild(checkbox);
 
-                var cells = [indexTd, dateTd, descTd, amountTd, balanceTd, chargesTd, reviewTd];
+                var cells = [indexTd].concat(valueTds.map(function (entry) { return entry.td; })).concat([reviewTd]);
                 cells.forEach(function (td) { tr.appendChild(td); });
 
                 function attachCellHover(td) {
@@ -745,7 +817,7 @@
                     });
                 }
 
-                [dateTd, descTd, amountTd, balanceTd, chargesTd].forEach(attachCellHover);
+                valueTds.forEach(function (entry) { attachCellHover(entry.td); });
 
                 function attachEdit(td, field, isNumeric) {
                     td.addEventListener("dblclick", function (e) {
@@ -760,11 +832,11 @@
                     });
                 }
 
-                attachEdit(dateTd, "date", false);
-                attachEdit(descTd, "description", false);
-                attachEdit(amountTd, "amount", true);
-                attachEdit(balanceTd, "balance", true);
-                attachEdit(chargesTd, "charges", true);
+                valueTds.forEach(function (entry) {
+                    if (entry.col.editable) {
+                        attachEdit(entry.td, entry.col.field, !!entry.col.numeric);
+                    }
+                });
 
                 reviewTd.addEventListener("click", function (e) {
                     e.stopPropagation();
@@ -815,6 +887,7 @@
                 undoStack = [];
                 redoStack = [];
                 dirtyCount = 0;
+                configureTableStructure();
                 renderTable();
                 updateToolbarState();
             } catch (err) {
@@ -965,6 +1038,9 @@
 
             var headers = table.tHead.rows[0].cells;
             var cols = colgroup.children;
+            Array.from(headers).forEach(function (th) {
+                Array.from(th.querySelectorAll(".col-resizer")).forEach(function (el) { el.remove(); });
+            });
 
             var activeCol = null;
             var startX = 0;

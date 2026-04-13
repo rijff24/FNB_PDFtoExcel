@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>FNB PDF to Excel</title>
+    <title>Bank Statement To Excel</title>
     <link rel="stylesheet" href="/static/style.css" />
 </head>
 <body class="bootstrapping">
@@ -14,7 +14,7 @@
         </div>
     </div>
     <main id="homeAppShell" class="container">
-        <h1>FNB PDF to Excel</h1>
+        <h1>Bank Statement To Excel</h1>
         <p>Upload a statement PDF and download extracted transactions as Excel.</p>
         <p id="publicLinks">
             <span id="requestAccessWrap"><a href="/register">Request account access</a></span>
@@ -58,10 +58,22 @@
                 <label for="file">Statement PDF</label>
                 <input id="file" name="file" type="file" accept=".pdf,application/pdf" required />
 
-                <label class="checkbox">
-                    <input id="enable_ocr" type="checkbox" name="enable_ocr" value="true" checked />
-                    Enable OCR (Google Document AI)
-                </label>
+                <div class="extract-options-row">
+                    <label class="checkbox">
+                        <input id="enable_ocr" type="checkbox" name="enable_ocr" value="true" checked />
+                        Enable OCR (Google Document AI)
+                    </label>
+                    <div class="bank-select-wrap">
+                        <label for="bank">Bank</label>
+                        <select id="bank" name="bank">
+                            {% for bank_option in bank_options %}
+                            <option value="{{ bank_option.id }}"{% if not bank_option.enabled %} disabled{% endif %}>
+                                {{ bank_option.label }}
+                            </option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                </div>
 
                 <div class="button-row">
                     <button id="previewBtn" type="submit" disabled>Preview &amp; review</button>

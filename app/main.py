@@ -12,7 +12,7 @@ from app.routes.register import router as register_router
 from app.routes.upload import router as upload_router
 from app.services.logging_utils import logger  # noqa: F401  - ensure logger is configured
 
-app = FastAPI(title="FNB PDF to Excel")
+app = FastAPI(title="Bank Statement To Excel")
 app.mount("/static", StaticFiles(directory="app/static"), name="static")
 
 # Disable Jinja template caching to avoid a known cache-key issue in some Jinja versions.

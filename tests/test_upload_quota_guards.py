@@ -34,7 +34,7 @@ def test_extract_ocr_enforces_quota_before_docai(monkeypatch) -> None:
 
     called = {"docai": False}
 
-    def _fail_if_called(_pdf: bytes) -> str:
+    def _fail_if_called(_pdf: bytes, bank_id: str = "fnb") -> str:
         called["docai"] = True
         return "text"
 
@@ -66,7 +66,7 @@ def test_extract_no_ocr_bypasses_quota_backend(monkeypatch) -> None:
     monkeypatch.setattr("app.routes.upload.enforce_redis_quotas", _should_not_run)
     monkeypatch.setattr(
         "app.routes.upload.parse_transactions_from_pdf_bytes",
-        lambda _pdf: [
+        lambda _pdf, forced_year=None, bank_id="fnb": [
             {"date": "2026-01-01", "description": "x", "amount": 1.0, "balance": 1.0},
         ],
     )
@@ -98,7 +98,7 @@ def test_extract_preview_enforces_quota(monkeypatch) -> None:
     class _Doc:
         pages = []
 
-    def _fail_if_called(_pdf: bytes):
+    def _fail_if_called(_pdf: bytes, bank_id: str = "fnb"):
         called["docai"] = True
         return _Doc()
 
@@ -130,7 +130,7 @@ def test_extract_preview_non_ocr_uses_pdfplumber_layout(monkeypatch) -> None:
     monkeypatch.setattr("app.routes.upload.enforce_redis_quotas", _should_not_run)
     monkeypatch.setattr(
         "app.routes.upload.parse_transactions_from_pdf_bytes_with_layout",
-        lambda _pdf: [
+        lambda _pdf, forced_year=None, bank_id="fnb": [
             {
                 "date": "2026-01-01",
                 "description": "A",
@@ -205,7 +205,7 @@ def test_extract_preview_billing_warning_metadata(monkeypatch) -> None:
     )
     monkeypatch.setattr(
         "app.routes.upload.parse_transactions_from_pdf_bytes_with_layout",
-        lambda _pdf: [
+        lambda _pdf, forced_year=None, bank_id="fnb": [
             {
                 "date": "2026-01-01",
                 "description": "A",
@@ -231,6 +231,117 @@ def test_extract_preview_billing_warning_metadata(monkeypatch) -> None:
     assert payload["billing_warning"] == "warn"
     assert payload["billing_projected_total"] == 12.5
     assert payload["billing_limit_remaining"] == 3.5
+
+
+def test_extract_preview_bank_defaults_and_normalizes(monkeypatch) -> None:
+    _set_quota_env(monkeypatch)
+    monkeypatch.setattr(
+        "app.routes.upload._authenticate_mutating_request",
+        lambda _request, _auth, path: AuthorizedUser(email="user@example.com", uid="u6"),
+    )
+    monkeypatch.setattr("app.routes.upload.enforce_redis_quotas", lambda *_args, **_kwargs: None)
+
+    seen_bank_ids: list[str] = []
+
+    def _parse_layout(_pdf: bytes, forced_year=None, bank_id: str = "fnb"):
+        seen_bank_ids.append(bank_id)
+        return [
+            {
+                "date": "2026-01-01",
+                "description": "A",
+                "amount": 10.0,
+                "balance": 20.0,
+                "charges": None,
+                "page_index": 0,
+                "needs_review": False,
+                "bbox_row": {"x_min": 0.1, "y_min": 0.1, "x_max": 0.6, "y_max": 0.2},
+            }
+        ]
+
+    monkeypatch.setattr("app.routes.upload.parse_transactions_from_pdf_bytes_with_layout", _parse_layout)
+
+    client = TestClient(app)
+    files = {"file": ("statement.pdf", _pdf_bytes(page_count=1), "application/pdf")}
+    headers = {"Authorization": "Bearer token"}
+
+    response_default = client.post(
+        "/extract/preview",
+        files=files,
+        data={"enable_ocr": "false"},
+        headers=headers,
+    )
+    assert response_default.status_code == 200
+
+    response_alias = client.post(
+        "/extract/preview",
+        files=files,
+        data={"enable_ocr": "false", "bank": "capitecpersonal"},
+        headers=headers,
+    )
+    assert response_alias.status_code == 200
+
+    response_disabled = client.post(
+        "/extract/preview",
+        files=files,
+        data={"enable_ocr": "false", "bank": "absa"},
+        headers=headers,
+    )
+    assert response_disabled.status_code == 200
+
+    assert seen_bank_ids == ["fnb", "capitec_personal", "fnb"]
+
+
+def test_extract_preview_returns_ocr_recommended_on_empty_non_ocr(monkeypatch) -> None:
+    _set_quota_env(monkeypatch)
+    monkeypatch.setattr(
+        "app.routes.upload._authenticate_mutating_request",
+        lambda _request, _auth, path: AuthorizedUser(email="user@example.com", uid="u9"),
+    )
+    monkeypatch.setattr("app.routes.upload.enforce_redis_quotas", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(
+        "app.routes.upload.parse_transactions_from_pdf_bytes_with_layout",
+        lambda _pdf, forced_year=None, bank_id="fnb": [],
+    )
+
+    client = TestClient(app)
+    response = client.post(
+        "/extract/preview",
+        files={"file": ("statement.pdf", _pdf_bytes(page_count=1), "application/pdf")},
+        data={"enable_ocr": "false", "bank": "capitec"},
+        headers={"Authorization": "Bearer token"},
+    )
+
+    assert response.status_code == 422
+    detail = response.json()["detail"]
+    assert detail["code"] == "ocr_recommended"
+    assert detail["suggested_enable_ocr"] is True
+    assert detail["bank"] == "capitec"
+
+
+def test_extract_returns_ocr_recommended_on_empty_non_ocr(monkeypatch) -> None:
+    _set_quota_env(monkeypatch)
+    monkeypatch.setattr(
+        "app.routes.upload._authenticate_mutating_request",
+        lambda _request, _auth, path: AuthorizedUser(email="user@example.com", uid="u10"),
+    )
+    monkeypatch.setattr(
+        "app.routes.upload.parse_transactions_from_pdf_bytes",
+        lambda _pdf, forced_year=None, bank_id="fnb": [],
+    )
+
+    client = TestClient(app)
+    response = client.post(
+        "/extract",
+        files={"file": ("statement.pdf", _pdf_bytes(page_count=1), "application/pdf")},
+        data={"enable_ocr": "false", "bank": "standard_bank"},
+        headers={"Authorization": "Bearer token"},
+    )
+
+    assert response.status_code == 422
+    detail = response.json()["detail"]
+    assert detail["code"] == "ocr_recommended"
+    assert detail["suggested_enable_ocr"] is True
+    assert detail["bank"] == "standard_bank"
 
 
 def test_extract_requires_csrf_when_cookie_auth(monkeypatch) -> None:
