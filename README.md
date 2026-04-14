@@ -4,11 +4,11 @@ Production-ready v1 web service that converts South African bank statement PDFs 
 
 ## What it does
 
-- Accepts PDF uploads via a web UI
-- Optional OCR via Google Document AI
-- Requires preview/review before final Excel download
-- Extracts structured transactions (date, description, amount, balance)
-- Exports a clean `.xlsx` for download
+- Accepts PDF uploads via a web UI with bank selector (FNB, Capitec Business, Capitec Personal, Standard Bank)
+- Optional OCR via Google Document AI (per-bank processor support)
+- Position-based column splitting using word-level x-coordinates for accurate parsing
+- Interactive review page: edit cells, select/insert/delete rows, toggle PDF highlighting, synchronized vertical/horizontal scrolling, and calibrated PDF/table sync zoom
+- Exports a clean `.xlsx` with bank-specific column headers
 
 ## Core architecture (v1)
 
@@ -58,11 +58,13 @@ app/
   routes/
     upload.py
   services/
+    banks.py             # Bank parser profiles and selection
     document_ai.py
-    parser.py
-    excel_export.py
+    parser.py            # Position-based multi-bank parser
+    excel_export.py      # Bank-specific Excel export
   templates/
     index.html
+    review.html          # Interactive review with row management
   static/
     style.css
   utils/

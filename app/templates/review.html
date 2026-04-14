@@ -75,20 +75,28 @@
 
         .pdf-canvas-wrapper {
             position: relative;
-            overflow-x: auto;
+            overflow-x: scroll;
             overflow-y: visible;
+            scrollbar-gutter: stable both-edges;
         }
 
-        #pdfCanvas {
+        .pdf-page {
+            position: relative;
+            margin-bottom: 8px;
+        }
+
+        .pdf-page canvas {
             display: block;
             border-radius: 8px;
             background: #0b1120;
         }
 
-        #pdfOverlay {
+        .pdf-page-overlay {
             position: absolute;
             top: 0;
             left: 0;
+            width: 100%;
+            height: 100%;
             pointer-events: none;
         }
 
@@ -146,27 +154,165 @@
         .table-toolbar {
             display: flex;
             align-items: center;
-            justify-content: space-between;
-            gap: 0.75rem;
+            gap: 0.4rem;
             margin-top: 0.25rem;
+            flex-wrap: wrap;
+            row-gap: 0.35rem;
         }
 
         .table-toolbar .toolbar-left,
-        .table-toolbar .toolbar-center,
         .table-toolbar .toolbar-right {
             display: flex;
             align-items: center;
-            gap: 0.5rem;
+            gap: 0.2rem;
+            flex-wrap: nowrap;
         }
 
-        .table-toolbar button {
-            font-size: 0.75rem;
-            padding: 0.3rem 0.6rem;
+        .tb-divider {
+            width: 1px;
+            height: 1.1rem;
+            background: #e2e8f0;
+            margin: 0 0.15rem;
+            flex-shrink: 0;
+        }
+
+        .table-toolbar button,
+        .table-toolbar .tb-icon-btn {
+            all: unset;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 28px;
+            height: 28px;
+            border-radius: 6px;
+            border: 1px solid transparent;
+            cursor: pointer;
+            color: #475569;
+            flex-shrink: 0;
+            transition: background 100ms, border-color 100ms, color 100ms;
+        }
+
+        .table-toolbar button:hover,
+        .table-toolbar .tb-icon-btn:hover {
+            background: #f1f5f9;
+            border-color: #e2e8f0;
+            color: #1e293b;
+        }
+
+        .table-toolbar button:disabled,
+        .table-toolbar .tb-icon-btn:disabled {
+            opacity: 0.3;
+            cursor: not-allowed;
+            background: transparent;
+            border-color: transparent;
+        }
+
+        .table-toolbar button:disabled:hover,
+        .table-toolbar .tb-icon-btn:disabled:hover {
+            background: transparent;
+            border-color: transparent;
+            color: #475569;
+        }
+
+        .tb-icon-btn.tb-active {
+            background: #e0f2fe;
+            border-color: #bae6fd;
+            color: #0369a1;
+        }
+
+        .tb-text-btn {
+            all: unset;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.3rem;
+            padding: 4px 10px;
+            font-size: 0.7rem;
+            font-weight: 600;
+            border-radius: 6px;
+            background: #2563eb;
+            color: #fff;
+            cursor: pointer;
+            white-space: nowrap;
+            transition: background 100ms;
+            flex-shrink: 0;
+        }
+
+        .tb-text-btn:hover {
+            background: #1d4ed8;
+        }
+
+        .tb-text-btn:disabled {
+            opacity: 0.45;
+            cursor: not-allowed;
+        }
+
+        .tb-segment {
+            display: inline-flex;
+            border: 1px solid #e2e8f0;
+            border-radius: 6px;
+            overflow: hidden;
+            flex-shrink: 0;
+        }
+
+        .tb-seg-option {
+            padding: 3px 8px;
+            font-size: 0.65rem;
+            font-weight: 500;
+            cursor: pointer;
+            background: transparent;
+            color: #64748b;
+            border-right: 1px solid #e2e8f0;
+            white-space: nowrap;
+            transition: background 100ms, color 100ms;
+            user-select: none;
+        }
+
+        .tb-seg-option:last-child {
+            border-right: none;
+        }
+
+        .tb-seg-option:hover {
+            background: #f8fafc;
+        }
+
+        .tb-seg-option.active {
+            background: #e0e7ff;
+            color: #3730a3;
+            font-weight: 600;
+        }
+
+        .tb-label {
+            font-size: 0.65rem;
+            color: #64748b;
+            font-weight: 500;
+            white-space: nowrap;
+            user-select: none;
+        }
+
+        .tb-zoom-group {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.25rem;
+            flex-shrink: 0;
+        }
+
+        .tb-zoom-group input[type="range"] {
+            width: 60px;
+            height: 14px;
+            cursor: pointer;
+        }
+
+        .tb-zoom-group input[type="checkbox"] {
+            width: 13px;
+            height: 13px;
+            margin: 0;
+            cursor: pointer;
         }
 
         #dirtyLabel {
-            font-size: 0.75rem;
-            color: #6b7280;
+            font-size: 0.65rem;
+            color: #94a3b8;
+            white-space: nowrap;
         }
 
         .cell-input {
@@ -218,8 +364,10 @@
 
         .transactions-table-wrapper {
             max-height: 82vh;
-            overflow: auto;
+            overflow-y: auto;
+            overflow-x: scroll;
             margin-top: 0.5rem;
+            scrollbar-gutter: stable both-edges;
         }
 
         table.transactions {
@@ -227,16 +375,24 @@
             border-collapse: collapse;
             font-size: 0.85rem;
             table-layout: fixed;
+            user-select: none;
+            -webkit-user-select: none;
         }
 
         table.transactions th,
         table.transactions td {
             padding: 0.4rem 0.5rem;
             border-bottom: 1px solid rgba(226, 232, 240, 0.9);
+            border-right: 1px solid rgba(226, 232, 240, 0.5);
             text-align: left;
             white-space: nowrap;
             overflow: hidden;
             text-overflow: ellipsis;
+        }
+
+        table.transactions th:last-child,
+        table.transactions td:last-child {
+            border-right: none;
         }
 
         table.transactions td.desc-cell {
@@ -263,7 +419,10 @@
         .col-reference { width: 16rem; }
         .col-amount  { width: 6.5rem; }
         .col-balance { width: 7rem; }
-        .col-charges { width: 5rem; }
+        .col-charges  { width: 5rem; }
+        .col-category { width: 8rem; }
+        .col-money-in { width: 6rem; }
+        .col-money-out { width: 6rem; }
         .col-review  { width: 2.5rem; }
 
         table.transactions thead th {
@@ -308,6 +467,14 @@
             background: #fef9c3;
         }
 
+        tr.selected-row {
+            background: rgba(59, 130, 246, 0.15) !important;
+        }
+
+        tr.selected-row.needs-review-row {
+            background: rgba(59, 130, 246, 0.22) !important;
+        }
+
         .badge {
             display: inline-flex;
             align-items: center;
@@ -337,6 +504,10 @@
         .review-meta {
             font-size: 0.82rem;
             color: #6b7280;
+        }
+
+        .table-toolbar .toolbar-right {
+            margin-left: auto;
         }
 
         .link {
@@ -369,10 +540,7 @@
                 </label>
                 <span id="zoomValue">150%</span>
             </div>
-            <div class="pdf-canvas-wrapper" id="pdfCanvasWrapper">
-                <canvas id="pdfCanvas"></canvas>
-                <div id="pdfOverlay"></div>
-            </div>
+            <div class="pdf-canvas-wrapper" id="pdfCanvasWrapper"></div>
             <p id="pdfStatus" class="status"></p>
         </div>
 
@@ -384,14 +552,53 @@
 
             <div class="table-toolbar" id="tableToolbar">
                 <div class="toolbar-left">
-                    <button type="button" id="undoBtn" disabled>Undo</button>
-                    <button type="button" id="redoBtn" disabled>Redo</button>
-                </div>
-                <div class="toolbar-center">
-                    <button type="button" id="saveBtn" disabled>Save</button>
-                    <button type="button" id="downloadBtn">Download Excel</button>
+                    <button type="button" class="tb-icon-btn" id="undoBtn" disabled title="Undo (Ctrl+Z)">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg>
+                    </button>
+                    <button type="button" class="tb-icon-btn" id="redoBtn" disabled title="Redo (Ctrl+Y)">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.13-9.36L23 10"/></svg>
+                    </button>
+                    <span class="tb-divider"></span>
+                    <button type="button" class="tb-icon-btn" id="addRowAboveBtn" disabled title="Insert row above">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5"/><polyline points="5 12 12 5 19 12"/></svg>
+                    </button>
+                    <button type="button" class="tb-icon-btn" id="addRowBelowBtn" disabled title="Insert row below">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14"/><polyline points="19 12 12 19 5 12"/></svg>
+                    </button>
+                    <button type="button" class="tb-icon-btn" id="deleteRowsBtn" disabled title="Delete selected rows (Del)">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
+                    </button>
+                    <span class="tb-divider"></span>
+                    <button type="button" class="tb-icon-btn" id="saveBtn" disabled title="Save changes">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+                    </button>
+                    <button type="button" class="tb-text-btn" id="downloadBtn" title="Download Excel file">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                        Export
+                    </button>
                 </div>
                 <div class="toolbar-right">
+                    <button type="button" class="tb-icon-btn tb-active" id="highlightToggle" title="Toggle PDF highlighting">
+                        <svg id="hlIconOn" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                        <svg id="hlIconOff" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:none"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"/><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
+                    </button>
+                    <span class="tb-divider"></span>
+                    <span class="tb-label">Scroll</span>
+                    <div class="tb-segment" id="scrollModeSegment">
+                        <span class="tb-seg-option active" data-mode="auto">Auto</span>
+                        <span class="tb-seg-option" data-mode="synced">Sync</span>
+                        <span class="tb-seg-option" data-mode="none">None</span>
+                    </div>
+                    <span class="tb-divider"></span>
+                    <div class="tb-zoom-group">
+                        <span class="tb-label">Tbl</span>
+                        <input id="tableZoomSlider" type="range" min="0.5" max="2.5" step="0.1" value="1.0" title="Table zoom" />
+                        <span class="tb-label" id="tableZoomValue">100%</span>
+                    </div>
+                    <div class="tb-zoom-group">
+                        <input type="checkbox" id="syncZoomToggle" title="Sync PDF and table zoom" />
+                        <span class="tb-label">Sync</span>
+                    </div>
                     <span id="dirtyLabel"></span>
                 </div>
             </div>
@@ -429,8 +636,6 @@
 <script>
     (function () {
         const sessionId = "{{ session_id }}";
-        const pdfCanvas = document.getElementById("pdfCanvas");
-        const pdfOverlay = document.getElementById("pdfOverlay");
         const pdfCanvasWrapper = document.getElementById("pdfCanvasWrapper");
         const pdfViewer = document.querySelector(".pdf-viewer");
         const pdfStatus = document.getElementById("pdfStatus");
@@ -442,19 +647,44 @@
             ? transactionsTable.tHead.rows[0]
             : null;
 
-        // In-memory state
         let transactions = [];
         let undoStack = [];
         let redoStack = [];
         let dirtyCount = 0;
 
         let pdfDoc = null;
-        let currentPage = 1;
         let currentZoom = 1.5;
         let lastBbox = null;
+        let lastBboxPage = 0;
         let clearTimer = null;
         let activeColumns = [];
         let activeBankId = "fnb";
+        let selectedRows = new Set();
+        let lastClickedRow = null;
+        let highlightEnabled = true;
+        let scrollMode = "auto";
+        let tableZoom = 1.0;
+        let syncZoom = false;
+        let scrollSource = null;
+        let isZooming = false;
+        let zoomGuardTimer = null;
+        let renderGeneration = 0;
+        let pageElements = [];
+        const PDF_SYNC_MIN = 1.0;
+        const TABLE_SYNC_AT_PDF_MIN = 0.53;
+        const PDF_SYNC_MAX = 2.5;
+        const TABLE_SYNC_AT_PDF_MAX = 1.23;
+        const SYNC_SLOPE = (TABLE_SYNC_AT_PDF_MAX - TABLE_SYNC_AT_PDF_MIN) / (PDF_SYNC_MAX - PDF_SYNC_MIN);
+        const SYNC_INTERCEPT = TABLE_SYNC_AT_PDF_MIN - SYNC_SLOPE * PDF_SYNC_MIN;
+
+        function mapPdfToTableZoom(pdfZoom) {
+            return clamp(SYNC_SLOPE * pdfZoom + SYNC_INTERCEPT, 0.5, 2.5);
+        }
+
+        function mapTableToPdfZoom(tblZoom) {
+            if (Math.abs(SYNC_SLOPE) < 1e-6) return clamp(currentZoom, 0.5, 2.5);
+            return clamp((tblZoom - SYNC_INTERCEPT) / SYNC_SLOPE, 0.5, 2.5);
+        }
 
         var BANK_TABLE_TEMPLATES = {
             fnb: [
@@ -476,9 +706,11 @@
             capitec_personal: [
                 { field: "date", label: "Date", colClass: "col-date", bboxField: "bbox_date", numeric: false, editable: true, descCell: false },
                 { field: "description", label: "Description", colClass: "col-desc", bboxField: "bbox_description", numeric: false, editable: true, descCell: true },
-                { field: "amount", label: "Amount", colClass: "col-amount", bboxField: "bbox_amount", numeric: true, editable: true, descCell: false },
-                { field: "balance", label: "Balance", colClass: "col-balance", bboxField: "bbox_balance", numeric: true, editable: true, descCell: false },
-                { field: "charges", label: "Fees", colClass: "col-charges", bboxField: "bbox_charges", numeric: true, editable: true, descCell: false }
+                { field: "category", label: "Category", colClass: "col-category", bboxField: "bbox_category", numeric: false, editable: true, descCell: false },
+                { field: "money_in", label: "Money In", colClass: "col-money-in", bboxField: "bbox_money_in", numeric: true, editable: true, descCell: false },
+                { field: "money_out", label: "Money Out", colClass: "col-money-out", bboxField: "bbox_money_out", numeric: true, editable: true, descCell: false },
+                { field: "charges", label: "Fee", colClass: "col-charges", bboxField: "bbox_charges", numeric: true, editable: true, descCell: false },
+                { field: "balance", label: "Balance", colClass: "col-balance", bboxField: "bbox_balance", numeric: true, editable: true, descCell: false }
             ],
             standard_bank: [
                 { field: "date", label: "Date", colClass: "col-date", bboxField: "bbox_date", numeric: false, editable: true, descCell: false },
@@ -592,6 +824,156 @@
             }
         }
 
+        function updateSelectionToolbar() {
+            var addAbove = document.getElementById("addRowAboveBtn");
+            var addBelow = document.getElementById("addRowBelowBtn");
+            var deleteBtn = document.getElementById("deleteRowsBtn");
+            var hasSelection = selectedRows.size > 0;
+            if (addAbove) addAbove.disabled = !hasSelection;
+            if (addBelow) addBelow.disabled = !hasSelection;
+            if (deleteBtn) deleteBtn.disabled = !hasSelection;
+        }
+
+        function clearSelection() {
+            selectedRows.clear();
+            updateSelectionToolbar();
+        }
+
+        function applySelectionClasses() {
+            if (!tbody) return;
+            var rows = tbody.querySelectorAll("tr");
+            rows.forEach(function (tr, i) {
+                if (selectedRows.has(i)) {
+                    tr.classList.add("selected-row");
+                } else {
+                    tr.classList.remove("selected-row");
+                }
+            });
+        }
+
+        function handleRowSelection(index, e) {
+            if (e.ctrlKey || e.metaKey) {
+                if (selectedRows.has(index)) {
+                    selectedRows.delete(index);
+                } else {
+                    selectedRows.add(index);
+                }
+                lastClickedRow = index;
+            } else if (e.shiftKey && lastClickedRow !== null) {
+                var lo = Math.min(lastClickedRow, index);
+                var hi = Math.max(lastClickedRow, index);
+                for (var i = lo; i <= hi; i++) {
+                    selectedRows.add(i);
+                }
+            } else {
+                if (selectedRows.size === 1 && selectedRows.has(index)) {
+                    selectedRows.clear();
+                    lastClickedRow = null;
+                } else {
+                    selectedRows.clear();
+                    selectedRows.add(index);
+                    lastClickedRow = index;
+                }
+            }
+            applySelectionClasses();
+            updateSelectionToolbar();
+        }
+
+        function makeEmptyRow() {
+            var row = { needs_review: true, review_state: "blank" };
+            if (transactions.length > 0) {
+                row.bank_id = transactions[0].bank_id || activeBankId;
+                row.page_index = 0;
+            }
+            if (activeColumns) {
+                activeColumns.forEach(function (col) {
+                    if (!(col.field in row)) row[col.field] = null;
+                });
+            }
+            return row;
+        }
+
+        function midpointBbox(a, b) {
+            if (!a && !b) return null;
+            if (!a) return { x_min: b.x_min, y_min: b.y_min, x_max: b.x_max, y_max: b.y_max };
+            if (!b) return { x_min: a.x_min, y_min: a.y_min, x_max: a.x_max, y_max: a.y_max };
+            return {
+                x_min: a.x_min,
+                x_max: a.x_max,
+                y_min: (a.y_min + b.y_min) / 2,
+                y_max: (a.y_max + b.y_max) / 2,
+            };
+        }
+
+        function deriveRowPosition(newRow, aboveTx, belowTx) {
+            var refTx = aboveTx || belowTx;
+            if (refTx) {
+                newRow.page_index = refTx.page_index != null ? refTx.page_index : 0;
+            }
+            var aboveBbox = aboveTx ? (aboveTx.bbox_row || aboveTx.bbox || null) : null;
+            var belowBbox = belowTx ? (belowTx.bbox_row || belowTx.bbox || null) : null;
+            var synth = midpointBbox(aboveBbox, belowBbox);
+            if (synth) {
+                newRow.bbox_row = synth;
+                newRow.bbox = synth;
+            }
+        }
+
+        function insertRows(position) {
+            var indices = Array.from(selectedRows).sort(function (a, b) { return a - b; });
+            if (indices.length === 0) return;
+
+            var inserted = [];
+            if (position === "above") {
+                for (var i = indices.length - 1; i >= 0; i--) {
+                    var newRow = makeEmptyRow();
+                    var belowTx = transactions[indices[i]] || null;
+                    var aboveTx = indices[i] > 0 ? transactions[indices[i] - 1] : null;
+                    deriveRowPosition(newRow, aboveTx, belowTx);
+                    transactions.splice(indices[i], 0, newRow);
+                    inserted.unshift({ index: indices[i], row: newRow });
+                }
+            } else {
+                var offset = 0;
+                for (var j = 0; j < indices.length; j++) {
+                    var insertAt = indices[j] + 1 + offset;
+                    var newRow = makeEmptyRow();
+                    var aboveTx = transactions[insertAt - 1] || null;
+                    var belowTx = transactions[insertAt] || null;
+                    deriveRowPosition(newRow, aboveTx, belowTx);
+                    transactions.splice(insertAt, 0, newRow);
+                    inserted.push({ index: insertAt, row: newRow });
+                    offset++;
+                }
+            }
+
+            undoStack.push({ type: "insert_rows", entries: inserted });
+            if (undoStack.length > 50) undoStack.shift();
+            clearRedo();
+            setDirty(1);
+            clearSelection();
+            renderTable();
+        }
+
+        function deleteSelectedRows() {
+            var indices = Array.from(selectedRows).sort(function (a, b) { return b - a; });
+            if (indices.length === 0) return;
+
+            var removed = [];
+            for (var i = 0; i < indices.length; i++) {
+                var idx = indices[i];
+                var row = transactions.splice(idx, 1)[0];
+                removed.unshift({ index: idx, row: row });
+            }
+
+            undoStack.push({ type: "delete_rows", entries: removed });
+            if (undoStack.length > 50) undoStack.shift();
+            clearRedo();
+            setDirty(1);
+            clearSelection();
+            renderTable();
+        }
+
         function getReviewState(tx) {
             if (tx.review_state === "blank" || tx.review_state === "needs" || tx.review_state === "done") {
                 return tx.review_state;
@@ -611,9 +993,11 @@
         }
 
         function clearHighlight() {
-            while (pdfOverlay.firstChild) {
-                pdfOverlay.removeChild(pdfOverlay.firstChild);
-            }
+            pageElements.forEach(function (pe) {
+                while (pe.overlay.firstChild) {
+                    pe.overlay.removeChild(pe.overlay.firstChild);
+                }
+            });
         }
 
         function scheduleClear() {
@@ -631,20 +1015,27 @@
             }
         }
 
-        function drawHighlight(bbox, scrollIntoView) {
+        function drawHighlight(bbox, pgIdx, scrollIntoView) {
             if (scrollIntoView === undefined) scrollIntoView = true;
             clearHighlight();
-            if (!bbox || !pdfCanvas.width || !pdfCanvas.height) return;
+            if (!highlightEnabled) return;
+            if (pgIdx == null) pgIdx = 0;
+            var pe = pageElements[pgIdx];
+            if (!pe || !bbox) return;
+
+            var canvas = pe.canvas;
+            if (!canvas.width || !canvas.height) return;
 
             lastBbox = bbox;
+            lastBboxPage = pgIdx;
 
             var xMin = clamp(bbox.x_min, 0, 1);
             var yMin = clamp(bbox.y_min, 0, 1);
             var xMax = clamp(bbox.x_max, 0, 1);
             var yMax = clamp(bbox.y_max, 0, 1);
 
-            var width = pdfCanvas.clientWidth;
-            var height = pdfCanvas.clientHeight;
+            var width = canvas.clientWidth;
+            var height = canvas.clientHeight;
 
             var pad = 4;
             var left = Math.max(0, xMin * width - pad);
@@ -658,25 +1049,20 @@
             rect.style.top = top + "px";
             rect.style.width = boxWidth + "px";
             rect.style.height = boxHeight + "px";
-            pdfOverlay.appendChild(rect);
+            pe.overlay.appendChild(rect);
 
-            if (scrollIntoView && pdfViewer && pdfCanvasWrapper) {
-                var hlCenterX = left + boxWidth / 2;
-
-                var wrapW = pdfCanvasWrapper.clientWidth;
-                var maxScrollX = pdfCanvasWrapper.scrollWidth - wrapW;
-                var targetX = clamp(hlCenterX - wrapW / 2, 0, maxScrollX);
-                pdfCanvasWrapper.scrollTo({ left: targetX, behavior: "smooth" });
-
-                var wrapOffsetTop = pdfCanvasWrapper.offsetTop;
-                var hlCenterYInViewer = wrapOffsetTop + top + boxHeight / 2;
-                var outerMaxScroll = pdfViewer.scrollHeight - pdfViewer.clientHeight;
-                var outerTarget = clamp(
-                    hlCenterYInViewer - pdfViewer.clientHeight / 2,
-                    0,
-                    outerMaxScroll
-                );
-                pdfViewer.scrollTo({ top: outerTarget, behavior: "smooth" });
+            if (scrollIntoView && pdfViewer && scrollMode === "auto") {
+                var highlightCenterY = pe.wrapper.offsetTop + top + boxHeight / 2;
+                var highlightCenterX = pe.wrapper.offsetLeft + left + boxWidth / 2;
+                var wrapperOffsetY = pdfCanvasWrapper ? pdfCanvasWrapper.offsetTop : 0;
+                var targetScrollTop = wrapperOffsetY + highlightCenterY - pdfViewer.clientHeight / 2;
+                var targetScrollLeft = highlightCenterX - pdfViewer.clientWidth / 2;
+                var maxTop = Math.max(0, pdfViewer.scrollHeight - pdfViewer.clientHeight);
+                var maxLeft = Math.max(0, (pdfCanvasWrapper ? pdfCanvasWrapper.scrollWidth : 0) - (pdfCanvasWrapper ? pdfCanvasWrapper.clientWidth : 0));
+                pdfViewer.scrollTo({ top: clamp(targetScrollTop, 0, maxTop), behavior: "smooth" });
+                if (pdfCanvasWrapper) {
+                    pdfCanvasWrapper.scrollTo({ left: clamp(targetScrollLeft, 0, maxLeft), behavior: "smooth" });
+                }
             }
         }
 
@@ -698,8 +1084,12 @@
                 var arrayBuffer = await resp.arrayBuffer();
                 var loadingTask = window["pdfjsLib"].getDocument({ data: arrayBuffer });
                 pdfDoc = await loadingTask.promise;
-                currentPage = 1;
-                await renderPage(currentPage);
+                pdfCanvasWrapper.innerHTML = "";
+                pageElements = [];
+
+                for (var i = 1; i <= pdfDoc.numPages; i++) {
+                    await renderPageInContainer(i);
+                }
                 setPdfStatus("");
             } catch (err) {
                 console.error(err);
@@ -707,32 +1097,70 @@
             }
         }
 
-        async function renderPage(pageNumber) {
+        async function renderPageInContainer(pageNumber) {
             if (!pdfDoc) return;
             try {
                 var page = await pdfDoc.getPage(pageNumber);
                 var viewport = page.getViewport({ scale: currentZoom });
-                var context = pdfCanvas.getContext("2d");
-                pdfCanvas.height = viewport.height;
-                pdfCanvas.width = viewport.width;
 
-                pdfOverlay.style.width = viewport.width + "px";
-                pdfOverlay.style.height = viewport.height + "px";
+                var wrapper = document.createElement("div");
+                wrapper.className = "pdf-page";
 
-                clearHighlight();
+                var canvas = document.createElement("canvas");
+                canvas.width = viewport.width;
+                canvas.height = viewport.height;
 
-                var renderContext = {
-                    canvasContext: context,
-                    viewport: viewport
-                };
-                await page.render(renderContext).promise;
+                var overlay = document.createElement("div");
+                overlay.className = "pdf-page-overlay";
 
-                if (lastBbox) {
-                    drawHighlight(lastBbox, false);
-                }
+                wrapper.appendChild(canvas);
+                wrapper.appendChild(overlay);
+                pdfCanvasWrapper.appendChild(wrapper);
+
+                var idx = pageNumber - 1;
+                var pe = { canvas: canvas, overlay: overlay, wrapper: wrapper, renderTask: null };
+                pageElements[idx] = pe;
+
+                var context = canvas.getContext("2d");
+                pe.renderTask = page.render({ canvasContext: context, viewport: viewport });
+                await pe.renderTask.promise;
+                pe.renderTask = null;
             } catch (err) {
+                if (err && err.name === "RenderingCancelledException") return;
                 console.error(err);
-                setPdfStatus("Failed to render page: " + (err && err.message ? err.message : String(err)));
+                setPdfStatus("Failed to render page " + pageNumber + ": " + (err && err.message ? err.message : String(err)));
+            }
+        }
+
+        async function rerenderAllPages() {
+            if (!pdfDoc) return;
+            renderGeneration++;
+            var gen = renderGeneration;
+            for (var i = 0; i < pageElements.length; i++) {
+                if (gen !== renderGeneration) return;
+                var pe = pageElements[i];
+                if (!pe) continue;
+                if (pe.renderTask) {
+                    pe.renderTask.cancel();
+                    pe.renderTask = null;
+                }
+                try {
+                    var page = await pdfDoc.getPage(i + 1);
+                    if (gen !== renderGeneration) return;
+                    var viewport = page.getViewport({ scale: currentZoom });
+                    pe.canvas.width = viewport.width;
+                    pe.canvas.height = viewport.height;
+                    var ctx = pe.canvas.getContext("2d");
+                    pe.renderTask = page.render({ canvasContext: ctx, viewport: viewport });
+                    await pe.renderTask.promise;
+                    pe.renderTask = null;
+                } catch (err) {
+                    if (err && err.name === "RenderingCancelledException") continue;
+                    console.error(err);
+                }
+            }
+            if (gen === renderGeneration && lastBbox) {
+                drawHighlight(lastBbox, lastBboxPage, false);
             }
         }
 
@@ -759,6 +1187,7 @@
                 var rowBbox = tx.bbox_row || tx.bbox || null;
 
                 tr.dataset.pageIndex = String(pageIndex);
+                tr.dataset.rowIndex = String(index);
 
                 var indexTd = document.createElement("td");
                 indexTd.textContent = String(index + 1);
@@ -802,15 +1231,11 @@
                 cells.forEach(function (td) { tr.appendChild(td); });
 
                 function attachCellHover(td) {
-                    td.addEventListener("mouseenter", async function () {
+                    td.addEventListener("mouseenter", function () {
+                        if (!highlightEnabled) return;
                         cancelClear();
-                        var page = pageIndex + 1;
-                        if (pdfDoc && page !== currentPage) {
-                            currentPage = page;
-                            await renderPage(currentPage);
-                        }
                         var bbox = td.dataset.bbox ? JSON.parse(td.dataset.bbox) : rowBbox;
-                        drawHighlight(bbox);
+                        drawHighlight(bbox, pageIndex);
                     });
                     td.addEventListener("mouseleave", function () {
                         scheduleClear();
@@ -859,18 +1284,19 @@
                     renderTable();
                 });
 
-                tr.addEventListener("click", async function () {
-                    cancelClear();
-                    var page = pageIndex + 1;
-                    if (pdfDoc && page !== currentPage) {
-                        currentPage = page;
-                        await renderPage(currentPage);
+                tr.addEventListener("click", function (e) {
+                    handleRowSelection(index, e);
+                    if (highlightEnabled) {
+                        cancelClear();
+                        drawHighlight(rowBbox, pageIndex);
                     }
-                    drawHighlight(rowBbox);
                 });
 
                 tbody.appendChild(tr);
             });
+
+            applySelectionClasses();
+            updateSelectionToolbar();
         }
 
         async function loadTransactions() {
@@ -906,18 +1332,44 @@
         function undo() {
             var action = undoStack.pop();
             if (!action) return;
-            applyChange(action, false);
+
+            if (action.type === "insert_rows") {
+                var indices = action.entries.map(function (e) { return e.index; });
+                indices.sort(function (a, b) { return b - a; });
+                indices.forEach(function (idx) { transactions.splice(idx, 1); });
+            } else if (action.type === "delete_rows") {
+                action.entries.forEach(function (e) {
+                    transactions.splice(e.index, 0, e.row);
+                });
+            } else {
+                applyChange(action, false);
+            }
+
             redoStack.push(action);
             setDirty(-1);
+            clearSelection();
             renderTable();
         }
 
         function redo() {
             var action = redoStack.pop();
             if (!action) return;
-            applyChange(action, true);
+
+            if (action.type === "insert_rows") {
+                action.entries.forEach(function (e) {
+                    transactions.splice(e.index, 0, e.row);
+                });
+            } else if (action.type === "delete_rows") {
+                var indices = action.entries.map(function (e) { return e.index; });
+                indices.sort(function (a, b) { return b - a; });
+                indices.forEach(function (idx) { transactions.splice(idx, 1); });
+            } else {
+                applyChange(action, true);
+            }
+
             undoStack.push(action);
             setDirty(1);
+            clearSelection();
             renderTable();
         }
 
@@ -1082,6 +1534,20 @@
                         document.addEventListener("mousemove", onMouseMove);
                         document.addEventListener("mouseup", onMouseUp);
                     });
+
+                    resizer.addEventListener("dblclick", function (e) {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        var maxW = th.scrollWidth;
+                        var bodyRows = table.tBodies[0] ? table.tBodies[0].rows : [];
+                        for (var r = 0; r < bodyRows.length; r++) {
+                            var cell = bodyRows[r].cells[index];
+                            if (cell) {
+                                maxW = Math.max(maxW, cell.scrollWidth);
+                            }
+                        }
+                        col.style.width = (maxW + 8) + "px";
+                    });
                 })(i);
             }
         }
@@ -1091,6 +1557,67 @@
             var redoBtn = document.getElementById("redoBtn");
             var saveBtn = document.getElementById("saveBtn");
             var downloadBtn = document.getElementById("downloadBtn");
+            var addAboveBtn = document.getElementById("addRowAboveBtn");
+            var addBelowBtn = document.getElementById("addRowBelowBtn");
+            var deleteBtn = document.getElementById("deleteRowsBtn");
+            var hlToggle = document.getElementById("highlightToggle");
+            var hlIconOn = document.getElementById("hlIconOn");
+            var hlIconOff = document.getElementById("hlIconOff");
+
+            if (addAboveBtn) addAboveBtn.addEventListener("click", function () { insertRows("above"); });
+            if (addBelowBtn) addBelowBtn.addEventListener("click", function () { insertRows("below"); });
+            if (deleteBtn) deleteBtn.addEventListener("click", function () { deleteSelectedRows(); });
+
+            if (hlToggle) {
+                hlToggle.addEventListener("click", function () {
+                    highlightEnabled = !highlightEnabled;
+                    if (highlightEnabled) {
+                        hlToggle.classList.add("tb-active");
+                        if (hlIconOn) hlIconOn.style.display = "";
+                        if (hlIconOff) hlIconOff.style.display = "none";
+                    } else {
+                        hlToggle.classList.remove("tb-active");
+                        if (hlIconOn) hlIconOn.style.display = "none";
+                        if (hlIconOff) hlIconOff.style.display = "";
+                        clearHighlight();
+                        lastBbox = null;
+                        if (scrollMode === "auto") {
+                            scrollMode = "synced";
+                            var seg = document.getElementById("scrollModeSegment");
+                            if (seg) {
+                                var opts = seg.querySelectorAll(".tb-seg-option");
+                                opts.forEach(function (o) {
+                                    o.classList.toggle("active", o.dataset.mode === "synced");
+                                });
+                            }
+                        }
+                    }
+                });
+            }
+
+            var segmentEl = document.getElementById("scrollModeSegment");
+            if (segmentEl) {
+                var segOptions = segmentEl.querySelectorAll(".tb-seg-option");
+                segOptions.forEach(function (opt) {
+                    opt.addEventListener("click", function () {
+                        segOptions.forEach(function (o) { o.classList.remove("active"); });
+                        opt.classList.add("active");
+                        scrollMode = opt.dataset.mode;
+                    });
+                });
+            }
+
+            var syncZoomToggle = document.getElementById("syncZoomToggle");
+            if (syncZoomToggle) {
+                syncZoomToggle.addEventListener("change", function () {
+                    syncZoom = syncZoomToggle.checked;
+                    if (syncZoom) {
+                        tableZoom = mapPdfToTableZoom(currentZoom);
+                        applyTableZoom();
+                    }
+                });
+            }
+
             function getCookie(name) {
                 var target = name + "=";
                 var parts = document.cookie ? document.cookie.split(";") : [];
@@ -1141,12 +1668,20 @@
             }
 
             document.addEventListener("keydown", function (e) {
+                var active = document.activeElement;
+                var isEditing = active && (active.tagName === "INPUT" || active.tagName === "TEXTAREA" || active.isContentEditable);
                 if (e.ctrlKey && !e.shiftKey && e.key.toLowerCase() === "z") {
                     e.preventDefault();
                     undo();
                 } else if ((e.ctrlKey && e.key.toLowerCase() === "y") || (e.ctrlKey && e.shiftKey && e.key.toLowerCase() === "z")) {
                     e.preventDefault();
                     redo();
+                } else if (e.key === "Delete" && !isEditing && selectedRows.size > 0) {
+                    e.preventDefault();
+                    deleteSelectedRows();
+                } else if (e.key === "Escape") {
+                    clearSelection();
+                    applySelectionClasses();
                 }
             });
 
@@ -1174,9 +1709,262 @@
                     currentZoom = value;
                     zoomValue.textContent = Math.round(currentZoom * 100) + "%";
                     if (pdfDoc) {
-                        await renderPage(currentPage);
+                        await rerenderAllPages();
+                    }
+                    if (syncZoom) {
+                        tableZoom = mapPdfToTableZoom(currentZoom);
+                        applyTableZoom();
                     }
                 });
+            }
+
+            /* ── Synced scroll logic ── */
+            var tableWrapper = document.querySelector(".transactions-table-wrapper");
+            (function initSyncedScroll() {
+                if (!pdfViewer || !tableWrapper) return;
+
+                function smoothToward(current, target, alpha) {
+                    return current * (1 - alpha) + target * alpha;
+                }
+
+                function clampScroll(el, top, left) {
+                    var maxTop = Math.max(0, el.scrollHeight - el.clientHeight);
+                    var maxLeft = Math.max(0, el.scrollWidth - el.clientWidth);
+                    return {
+                        top: clamp(top, 0, maxTop),
+                        left: clamp(left, 0, maxLeft),
+                    };
+                }
+
+                function horizontalFraction(el) {
+                    var maxLeft = Math.max(0, el.scrollWidth - el.clientWidth);
+                    return maxLeft > 0 ? el.scrollLeft / maxLeft : 0;
+                }
+
+                function getRowBboxCenter(tx) {
+                    if (!tx) return null;
+                    var bbox = tx.bbox_row || tx.bbox || null;
+                    if (!bbox) return null;
+                    return {
+                        x: clamp((Number(bbox.x_min) + Number(bbox.x_max)) / 2, 0, 1),
+                        y: clamp((Number(bbox.y_min) + Number(bbox.y_max)) / 2, 0, 1),
+                    };
+                }
+
+                function findCenterRow() {
+                    if (!tbody) return null;
+                    var rows = tbody.querySelectorAll("tr");
+                    if (!rows.length) return null;
+                    var wrapperRect = tableWrapper.getBoundingClientRect();
+                    var centerY = wrapperRect.top + wrapperRect.height / 2;
+                    var best = null;
+                    var bestDist = Infinity;
+                    rows.forEach(function (row) {
+                        var r = row.getBoundingClientRect();
+                        var rowCenterY = r.top + r.height / 2;
+                        var d = Math.abs(rowCenterY - centerY);
+                        if (d < bestDist) {
+                            bestDist = d;
+                            best = row;
+                        }
+                    });
+                    return best;
+                }
+
+                function findCenterPage() {
+                    if (!pageElements.length) return 0;
+                    var viewerRect = pdfViewer.getBoundingClientRect();
+                    var centerY = viewerRect.top + viewerRect.height / 2;
+                    var bestPage = 0;
+                    var bestDist = Infinity;
+                    for (var i = 0; i < pageElements.length; i++) {
+                        var pe = pageElements[i];
+                        if (!pe || !pe.wrapper) continue;
+                        var r = pe.wrapper.getBoundingClientRect();
+                        if (r.top <= centerY && r.bottom >= centerY) return i;
+                        var pageCenterY = r.top + r.height / 2;
+                        var d = Math.abs(pageCenterY - centerY);
+                        if (d < bestDist) {
+                            bestDist = d;
+                            bestPage = i;
+                        }
+                    }
+                    return bestPage;
+                }
+
+                function pdfScrollHandler() {
+                    if (scrollMode !== "synced" || scrollSource === "table" || isZooming) return;
+                    scrollSource = "pdf";
+
+                    var pageIdx = findCenterPage();
+                    var pe = pageElements[pageIdx];
+                    if (!pe || !pe.wrapper) {
+                        requestAnimationFrame(function () { scrollSource = null; });
+                        return;
+                    }
+
+                    var viewerRect = pdfViewer.getBoundingClientRect();
+                    var pageRect = pe.wrapper.getBoundingClientRect();
+                    var viewerCenterY = viewerRect.top + viewerRect.height / 2;
+                    var viewerCenterX = viewerRect.left + viewerRect.width / 2;
+                    var normY = clamp((viewerCenterY - pageRect.top) / Math.max(1, pageRect.height), 0, 1);
+                    var normX = clamp((viewerCenterX - pageRect.left) / Math.max(1, pageRect.width), 0, 1);
+
+                    var rows = tbody ? tbody.querySelectorAll("tr") : [];
+                    var bestRow = null;
+                    var bestDist = Infinity;
+                    rows.forEach(function (row) {
+                        if (Number(row.dataset.pageIndex || 0) !== pageIdx) return;
+                        var idx = Number(row.dataset.rowIndex || -1);
+                        if (idx < 0 || idx >= transactions.length) return;
+                        var center = getRowBboxCenter(transactions[idx]);
+                        var y = center ? center.y : 0.5;
+                        var d = Math.abs(y - normY);
+                        if (d < bestDist) {
+                            bestDist = d;
+                            bestRow = row;
+                        }
+                    });
+
+                    if (bestRow) {
+                        var targetTop = bestRow.offsetTop + bestRow.offsetHeight / 2 - tableWrapper.clientHeight / 2;
+                        var tableMaxLeft = Math.max(0, tableWrapper.scrollWidth - tableWrapper.clientWidth);
+                        var sourceFracX = pdfCanvasWrapper ? horizontalFraction(pdfCanvasWrapper) : normX;
+                        var targetLeft = sourceFracX * tableMaxLeft;
+                        if (Math.abs(targetLeft - tableWrapper.scrollLeft) < 1) targetLeft = tableWrapper.scrollLeft;
+                        var smoothedTop = smoothToward(tableWrapper.scrollTop, targetTop, 0.3);
+                        var smoothedLeft = smoothToward(tableWrapper.scrollLeft, targetLeft, 0.3);
+                        var clamped = clampScroll(tableWrapper, smoothedTop, smoothedLeft);
+                        tableWrapper.scrollTop = clamped.top;
+                        tableWrapper.scrollLeft = clamped.left;
+                    }
+
+                    requestAnimationFrame(function () { scrollSource = null; });
+                }
+
+                function pdfWrapperScrollHandler() {
+                    // Horizontal scrolling happens on pdfCanvasWrapper, so this keeps sync responsive
+                    // even when there is no vertical movement in pdfViewer.
+                    if (scrollMode !== "synced" || scrollSource === "table" || isZooming) return;
+                    pdfScrollHandler();
+                }
+
+                function tableScrollHandler() {
+                    if (scrollMode !== "synced" || scrollSource === "pdf" || isZooming) return;
+                    scrollSource = "table";
+
+                    var row = findCenterRow();
+                    if (!row) {
+                        requestAnimationFrame(function () { scrollSource = null; });
+                        return;
+                    }
+
+                    var pageIdx = Number(row.dataset.pageIndex || 0);
+                    var rowIdx = Number(row.dataset.rowIndex || -1);
+                    var pe = pageElements[pageIdx];
+                    if (!pe || !pe.wrapper) {
+                        requestAnimationFrame(function () { scrollSource = null; });
+                        return;
+                    }
+
+                    var center = rowIdx >= 0 && rowIdx < transactions.length ? getRowBboxCenter(transactions[rowIdx]) : null;
+                    var normY = center ? center.y : 0.5;
+                    var tableNormX = tableWrapper.scrollWidth > 0
+                        ? clamp((tableWrapper.scrollLeft + tableWrapper.clientWidth / 2) / tableWrapper.scrollWidth, 0, 1)
+                        : 0.5;
+                    var normX = tableNormX;
+                    var targetTop = (pdfCanvasWrapper ? pdfCanvasWrapper.offsetTop : 0) + pe.wrapper.offsetTop + normY * pe.wrapper.clientHeight - pdfViewer.clientHeight / 2;
+                    var pdfMaxLeft = Math.max(0, (pdfCanvasWrapper ? pdfCanvasWrapper.scrollWidth : 0) - (pdfCanvasWrapper ? pdfCanvasWrapper.clientWidth : 0));
+                    var sourceFracX = horizontalFraction(tableWrapper);
+                    var targetLeft = sourceFracX * pdfMaxLeft;
+                    var currentPdfLeft = pdfCanvasWrapper ? pdfCanvasWrapper.scrollLeft : 0;
+                    if (Math.abs(targetLeft - currentPdfLeft) < 1) targetLeft = currentPdfLeft;
+                    var smoothedTop = smoothToward(pdfViewer.scrollTop, targetTop, 0.3);
+                    var smoothedLeft = smoothToward(currentPdfLeft, targetLeft, 0.3);
+                    var clampedTop = clamp(smoothedTop, 0, Math.max(0, pdfViewer.scrollHeight - pdfViewer.clientHeight));
+                    var clampedLeft = clamp(
+                        smoothedLeft,
+                        0,
+                        Math.max(0, (pdfCanvasWrapper ? pdfCanvasWrapper.scrollWidth : 0) - (pdfCanvasWrapper ? pdfCanvasWrapper.clientWidth : 0))
+                    );
+                    pdfViewer.scrollTop = clampedTop;
+                    if (pdfCanvasWrapper) pdfCanvasWrapper.scrollLeft = clampedLeft;
+
+                    requestAnimationFrame(function () { scrollSource = null; });
+                }
+
+                pdfViewer.addEventListener("scroll", pdfScrollHandler, { passive: true });
+                if (pdfCanvasWrapper) {
+                    pdfCanvasWrapper.addEventListener("scroll", pdfWrapperScrollHandler, { passive: true });
+                }
+                tableWrapper.addEventListener("scroll", tableScrollHandler, { passive: true });
+            })();
+
+            /* ── Table zoom logic ── */
+            var tableZoomSlider = document.getElementById("tableZoomSlider");
+            var tableZoomLabel = document.getElementById("tableZoomValue");
+
+            function applyTableZoom() {
+                if (transactionsTable) {
+                    transactionsTable.style.transform = "scale(" + tableZoom + ")";
+                    transactionsTable.style.transformOrigin = "top left";
+                }
+                if (tableZoomSlider) tableZoomSlider.value = String(tableZoom);
+                if (tableZoomLabel) tableZoomLabel.textContent = Math.round(tableZoom * 100) + "%";
+            }
+
+            function applyPdfZoom() {
+                if (zoomSlider) zoomSlider.value = String(currentZoom);
+                if (zoomValue) zoomValue.textContent = Math.round(currentZoom * 100) + "%";
+                if (pdfDoc) rerenderAllPages();
+            }
+
+            if (tableZoomSlider) {
+                tableZoomSlider.addEventListener("input", function () {
+                    var val = Number(tableZoomSlider.value);
+                    if (!val || val < 0.5) return;
+                    tableZoom = val;
+                    applyTableZoom();
+                    if (syncZoom) {
+                        currentZoom = mapTableToPdfZoom(tableZoom);
+                        applyPdfZoom();
+                    }
+                });
+            }
+
+            /* Ctrl+Scroll / pinch zoom for both panels */
+            if (tableWrapper) {
+                tableWrapper.addEventListener("wheel", function (e) {
+                    if (!e.ctrlKey) return;
+                    e.preventDefault();
+                    isZooming = true;
+                    if (zoomGuardTimer) clearTimeout(zoomGuardTimer);
+                    zoomGuardTimer = setTimeout(function () { isZooming = false; }, 350);
+                    var delta = e.deltaY > 0 ? -0.025 : 0.025;
+                    tableZoom = clamp(Math.round((tableZoom + delta) * 1000) / 1000, 0.5, 2.5);
+                    applyTableZoom();
+                    if (syncZoom) {
+                        currentZoom = mapTableToPdfZoom(tableZoom);
+                        applyPdfZoom();
+                    }
+                }, { passive: false });
+            }
+
+            if (pdfViewer) {
+                pdfViewer.addEventListener("wheel", function (e) {
+                    if (!e.ctrlKey) return;
+                    e.preventDefault();
+                    isZooming = true;
+                    if (zoomGuardTimer) clearTimeout(zoomGuardTimer);
+                    zoomGuardTimer = setTimeout(function () { isZooming = false; }, 350);
+                    var delta = e.deltaY > 0 ? -0.025 : 0.025;
+                    currentZoom = clamp(Math.round((currentZoom + delta) * 1000) / 1000, 0.5, 2.5);
+                    applyPdfZoom();
+                    if (syncZoom) {
+                        tableZoom = mapPdfToTableZoom(currentZoom);
+                        applyTableZoom();
+                    }
+                }, { passive: false });
             }
 
             /* Set initial PDF panel width to 45% of available space */

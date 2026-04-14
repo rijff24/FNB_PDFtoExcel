@@ -1,8 +1,31 @@
 # Parser — Transaction Extraction
 
-**File**: `app/services/parser.py`
+**Files**: `app/services/parser.py`, `app/services/banks.py`
 
-The parser is responsible for extracting structured transaction data (date, description, amount, balance, charges) from FNB bank statement PDFs. It supports two parsing modes: a **visual-row layout parser** (primary, used with Document AI) and a **legacy text parser** (fallback, used with pdfplumber).
+The parser extracts structured transaction data from South African bank statement PDFs. It supports multiple banks (FNB, Capitec Business, Capitec Personal, Standard Bank) with per-bank parsing profiles. Two parsing modes are available: a **position-based layout parser** (primary, uses pdfplumber word positions or Document AI tokens) and a **text-only fallback parser**.
+
+## Multi-Bank Support
+
+Bank parser profiles are defined in `app/services/banks.py`. Each profile specifies:
+- `id`: internal identifier (e.g. `"capitec"`, `"capitec_personal"`)
+- `label`: user-visible name in the bank selector dropdown
+- `processor_env_name`: which Document AI processor to use for OCR
+- `text_rule_set` / `document_rule_set`: which parsing functions to invoke
+
+The user selects a bank before upload. The parser dispatches to bank-specific functions based on the profile.
+
+## Position-Based Column Splitting
+
+The primary parsing approach uses word-level x-coordinates to assign text to columns:
+
+1. `_extract_text_line_entries` (pdfplumber path) or `_extract_docai_line_entries` (Document AI path) extracts each line's text plus a list of words with normalised `x_min` positions.
+2. `_COLUMN_BOUNDARIES` defines per-bank x-coordinate boundaries for splitting columns (e.g. where description ends and reference/category begins, where money columns start).
+3. `_split_words_by_x` splits a word list into left/right text at a given x-boundary.
+4. Bank-specific money extractors (e.g. `_extract_money_by_position`, `_extract_capitec_personal_money_by_position`) assign money values to their correct fields by checking which x-zone each word falls into.
+
+### Multi-Line Transaction Merging
+
+When a PDF line doesn't start with a date, it's treated as a continuation of the previous transaction. Words from the continuation line are merged into the appropriate columns (description, category, money) based on their x-position.
 
 ## Visual-Row Layout Parser
 
@@ -146,6 +169,27 @@ Used when OCR is disabled (pdfplumber path) or as a general-purpose fallback. It
 
 ---
 
+## Bank-Specific Parsers
+
+### FNB
+- Columns: Date, Description, Amount, Balance, Charges
+- Uses the visual-row parser for Document AI; text-only fallback for pdfplumber.
+
+### Capitec Business
+- Columns: Post Date, Trans. Date, Description, Reference, Fees, Amount, Balance
+- Position-based splitting: description/reference boundary at x=0.340; money columns at x=0.615/0.710/0.833.
+- Handles fee-only rows (no amount) via x-zone assignment.
+- Multi-line transaction merging for continuation lines.
+
+### Capitec Personal
+- Columns: Date, Description, Category, Money In, Money Out, Fee, Balance
+- Description/Category boundary at x=0.505; money zones at x=0.638/0.730/0.821/0.878.
+- Multi-line transaction merging for wrapped descriptions and categories.
+
+### Standard Bank
+- Columns: Description, Amount, Date (MM DD), Balance
+- Date is inferred from a two-digit month+day pair plus a year extracted from the document header.
+
 ## Tuning Column Boundaries
 
-If the parser misclassifies columns for a different FNB statement layout, adjust the `_COL_*_X` constants in `parser.py`. Use the `docs/samplePDF/debug_page0.py` script to inspect raw line positions from Document AI and identify the correct x-coordinate boundaries.
+To adjust column boundaries for a bank, update the `_COLUMN_BOUNDARIES` dict in `parser.py` and the corresponding `_*_cell_bboxes` function. Use `docs/samplePDF/debug_page0.py` to inspect raw word positions from pdfplumber or Document AI and identify the correct x-coordinate boundaries.

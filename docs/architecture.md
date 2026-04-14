@@ -2,7 +2,7 @@
 
 ## Overview
 
-FNB PDF to Excel is a **FastAPI** web application that accepts FNB bank statement PDFs, extracts transaction data using either local text extraction (pdfplumber) or cloud OCR (Google Document AI), and exports structured results as `.xlsx` files. A browser-based review UI allows users to visually inspect parsed transactions against the original PDF.
+Bank Statement To Excel is a **FastAPI** web application that accepts South African bank statement PDFs (FNB, Capitec Business, Capitec Personal, Standard Bank, and more), extracts transaction data using either local text extraction (pdfplumber) or cloud OCR (Google Document AI), and exports structured results as `.xlsx` files. A browser-based review UI allows users to visually inspect, edit, and manage parsed transactions against the original PDF.
 
 ## High-Level Component Diagram
 
@@ -73,9 +73,10 @@ FNB_PDFtoExcel/
 │   ├── services/
 │   │   ├── __init__.py
 │   │   ├── auth.py              # Firebase JWT verification + email allowlist
+│   │   ├── banks.py             # Bank parser profiles (FNB, Capitec, Std Bank, etc.)
 │   │   ├── document_ai.py       # Document AI client + file-based caching
-│   │   ├── parser.py            # Transaction extraction (visual-row + legacy text)
-│   │   ├── excel_export.py      # openpyxl Excel builder
+│   │   ├── parser.py            # Transaction extraction (position-based + legacy text)
+│   │   ├── excel_export.py      # openpyxl Excel builder (bank-specific columns)
 │   │   └── logging_utils.py     # Structured JSON logger
 │   ├── templates/
 │   │   ├── index.html           # Upload / sign-in page
@@ -127,7 +128,11 @@ FNB_PDFtoExcel/
 
 ## Key Design Decisions
 
-- **Visual-row parser**: Document AI returns lines grouped by column rather than by visual row. The parser re-groups lines by y-coordinate proximity, then classifies each line into a column (date/description, amount, balance, charges) by x-coordinate. This is more robust than text-line-based parsing for FNB statements.
-- **File-based Document AI cache**: API responses are cached to `.cache/docai/` as JSON, keyed by SHA-256 hash of the PDF bytes. This avoids repeated API calls during development and testing.
+- **Multi-bank support**: Configurable bank parser profiles (`app/services/banks.py`) define per-bank OCR processors, parsing rules, and UI column templates. The user selects a bank before upload; each bank has its own parser and review table layout.
+- **Position-based column splitting**: Word-level x-coordinates from pdfplumber (or Document AI tokens) determine which column each word belongs to. Precise normalised x-boundaries are defined per bank in `_COLUMN_BOUNDARIES`, eliminating text-heuristic guessing.
+- **Multi-line transaction merging**: Continuation lines (no leading date) are automatically merged into the previous transaction, supporting multi-line descriptions and split category/money fields.
+- **Visual-row parser**: Document AI returns lines grouped by column rather than by visual row. The parser re-groups lines by y-coordinate proximity, then classifies each line into a column by x-coordinate.
+- **File-based Document AI cache**: API responses are cached to `.cache/docai/` as JSON, keyed by SHA-256 hash of the PDF bytes. This avoids repeated API calls during development and testing. The cache directory is volume-mounted in Docker Compose for persistence across rebuilds.
 - **In-memory preview sessions**: The `PREVIEW_SESSIONS` dict stores PDF bytes and parsed data for the review UI. This is suitable for single-process deployments; production would use Redis or a database.
 - **No service account keys**: Firebase ID tokens are verified using Google's public certificates, avoiding the need to download or manage service account JSON keys.
+- **Bank-specific Excel export**: `excel_export.py` auto-detects the bank format from transaction data and exports with matching column headers (e.g. Capitec Personal exports Date, Description, Category, Money In, Money Out, Fee, Balance).

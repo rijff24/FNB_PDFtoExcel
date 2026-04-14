@@ -1,6 +1,6 @@
-# FNB PDF to Excel — Documentation
+# Bank Statement To Excel — Documentation
 
-This folder contains the full technical documentation for the **FNB PDF to Excel** project, a web application that extracts structured transaction data from First National Bank (FNB) statement PDFs and exports them as Excel spreadsheets.
+This folder contains the full technical documentation for the **Bank Statement To Excel** project, a web application that extracts structured transaction data from South African bank statement PDFs (FNB, Capitec Business, Capitec Personal, Standard Bank) and exports them as Excel spreadsheets.
 
 ## Documentation Index
 
@@ -8,7 +8,7 @@ This folder contains the full technical documentation for the **FNB PDF to Excel
 |---|---|
 | [Architecture](architecture.md) | System architecture, component diagram, data flow |
 | [API Reference](api-reference.md) | All HTTP endpoints with request/response schemas |
-| [Parser](parser.md) | Deep dive into the visual-row PDF parsing algorithm |
+| [Parser](parser.md) | Multi-bank position-based PDF parsing algorithm |
 | [Document AI](document-ai.md) | Google Document AI integration, caching, and configuration |
 | [Authentication](authentication.md) | Firebase Authentication flow and email allowlist |
 | [Frontend](frontend.md) | Browser-side auth, esbuild bundling, and review UI |

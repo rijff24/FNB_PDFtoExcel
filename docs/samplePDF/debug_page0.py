@@ -5,7 +5,7 @@ sys.path.insert(0, ".")
 from app.services.document_ai import _process_document
 from pathlib import Path
 
-pdf_bytes = Path("docs/samplePDF/2. Apr23.pdf").read_bytes()
+pdf_bytes = Path("docs/samplePDF/FNB.pdf").read_bytes()
 doc = _process_document(pdf_bytes)
 page = doc.pages[0]
 

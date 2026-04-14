@@ -473,30 +473,139 @@ def _parse_capitec_business_line_entries(
     return rows
 
 
+def _extract_capitec_personal_money_by_position(
+    words: list[dict[str, Any]],
+    col_bounds: dict[str, float],
+) -> dict[str, float | None]:
+    """Assign money values to money_in/money_out/fee/balance using word x-positions."""
+    mi_start = col_bounds["money_in_x_start"]
+    mo_start = col_bounds["money_out_x_start"]
+    fee_start = col_bounds["fee_x_start"]
+    bal_start = col_bounds["balance_x_start"]
+
+    mi_words = [w["text"] for w in words if mi_start <= w["x_min"] < mo_start]
+    mo_words = [w["text"] for w in words if mo_start <= w["x_min"] < fee_start]
+    fee_words = [w["text"] for w in words if fee_start <= w["x_min"] < bal_start]
+    bal_words = [w["text"] for w in words if w["x_min"] >= bal_start]
+
+    mi_text = " ".join(mi_words).strip()
+    mo_text = " ".join(mo_words).strip()
+    fee_text = " ".join(fee_words).strip()
+    bal_text = " ".join(bal_words).strip()
+
+    return {
+        "money_in": _parse_signed_money_token(mi_text) if mi_text else None,
+        "money_out": _parse_signed_money_token(mo_text) if mo_text else None,
+        "charges": _parse_signed_money_token(fee_text) if fee_text else None,
+        "balance": _parse_signed_money_token(bal_text) if bal_text else None,
+    }
+
+
 def _parse_capitec_personal_line_entries(
     line_entries: list[dict[str, Any]],
     profile: BankParserProfile,
     forced_year: int | None = None,
 ) -> list[dict[str, Any]]:
+    col_bounds = _COLUMN_BOUNDARIES.get("capitec_personal", {})
+    desc_cat_split = col_bounds.get("desc_category_split", 0.505)
+    money_in_x = col_bounds.get("money_in_x_start", 0.638)
+    date_x_end = 0.133
+    skip_prefixes = (
+        "date", "description", "category", "money in", "money out",
+        "fee", "balance", "brought forward",
+    )
+    header_re = re.compile(
+        r"^(date|description|category|money\s*in|money\s*out|fee|balance)\b",
+        re.IGNORECASE,
+    )
+    footer_prefixes = (
+        "24hr client care", "bank is an authorised", "unique document no",
+        "* includes vat", "capitec bank",
+    )
+
     rows: list[dict[str, Any]] = []
     for entry in line_entries:
         line = _preprocess_bank_text(str(entry.get("text", "")).strip())
-        m = re.match(r"^(?P<date>\d{2}/\d{2}/\d{4})\s+(?P<body>.+)$", line)
+        entry_words = entry.get("words") or []
+        if not entry_words:
+            continue
+
+        line_lower = line.lower()
+        if any(line_lower.startswith(fp) for fp in footer_prefixes):
+            continue
+        if header_re.match(line_lower):
+            continue
+
+        m = re.match(r"^(?P<date>\d{2}/\d{2}/\d{4})\s+", line)
+
         if not m:
+            # Continuation line: merge into previous row
+            if not rows:
+                continue
+            cont_words = [w for w in entry_words if w["x_min"] >= date_x_end]
+            if not cont_words:
+                continue
+
+            cont_desc = [w["text"] for w in cont_words if w["x_min"] < desc_cat_split]
+            cont_cat = [w["text"] for w in cont_words if desc_cat_split <= w["x_min"] < money_in_x]
+            cont_money = [w for w in cont_words if w["x_min"] >= money_in_x]
+
+            prev = rows[-1]
+            if cont_desc:
+                old_desc = prev.get("description") or ""
+                prev["description"] = (old_desc + " " + " ".join(cont_desc)).strip()
+            if cont_cat:
+                old_cat = prev.get("category") or ""
+                prev["category"] = (old_cat + " " + " ".join(cont_cat)).strip() or None
+
+            if cont_money:
+                money = _extract_capitec_personal_money_by_position(cont_money, col_bounds)
+                for key in ("money_in", "money_out", "charges", "balance"):
+                    if money[key] is not None and prev.get(key) is None:
+                        prev[key] = money[key]
+                if prev.get("money_out") is not None and prev["money_out"] > 0:
+                    prev["money_out"] = -prev["money_out"]
+                mi = prev.get("money_in")
+                mo = prev.get("money_out")
+                if mi is not None:
+                    prev["amount"] = abs(mi)
+                elif mo is not None:
+                    prev["amount"] = mo
+                prev["needs_review"] = prev.get("balance") is None
             continue
-        body = m.group("body")
-        money_tokens = list(re.finditer(r"[+-]?\d{1,3}(?:[ ,]\d{3})*\.\d{2}[+-]?", body))
-        if len(money_tokens) < 2:
+
+        body_words = [w for w in entry_words if w["x_min"] >= date_x_end]
+        if not body_words:
             continue
-        amount_match = money_tokens[-2]
-        balance_match = money_tokens[-1]
-        amount = _parse_signed_money_token(amount_match.group(0))
-        balance = _parse_signed_money_token(balance_match.group(0))
-        if amount is None or balance is None:
-            continue
-        description = body[:amount_match.start()].strip()
+
+        text_words = [w for w in body_words if w["x_min"] < money_in_x]
+        money_words = [w for w in body_words if w["x_min"] >= money_in_x]
+
+        desc_words = [w for w in text_words if w["x_min"] < desc_cat_split]
+        cat_words = [w for w in text_words if w["x_min"] >= desc_cat_split]
+
+        description = " ".join(w["text"] for w in desc_words).strip()
+        category = " ".join(w["text"] for w in cat_words).strip()
+
         if not description:
             continue
+        if description.lower().startswith(skip_prefixes):
+            continue
+
+        money = _extract_capitec_personal_money_by_position(money_words, col_bounds)
+        money_in = money["money_in"]
+        money_out = money["money_out"]
+        if money_out is not None and money_out > 0:
+            money_out = -money_out
+        charges = money["charges"]
+        balance = money["balance"]
+
+        amount: float | None = None
+        if money_in is not None:
+            amount = abs(money_in)
+        elif money_out is not None:
+            amount = money_out
+
         row_bbox = entry.get("bbox_row") or _default_bbox()
         cell_boxes = _capitec_personal_cell_bboxes(row_bbox)
         rows.append(
@@ -505,17 +614,23 @@ def _parse_capitec_personal_line_entries(
                 "post_date": _normalize_date(m.group("date"), forced_year=forced_year),
                 "transaction_date": None,
                 "description": description,
+                "category": category or None,
                 "reference": None,
+                "money_in": money_in,
+                "money_out": money_out,
                 "amount": amount,
                 "balance": balance,
-                "charges": None,
+                "charges": charges,
                 "page_index": int(entry.get("page_index", 0)),
-                "needs_review": False,
+                "needs_review": balance is None,
                 "bbox": row_bbox,
                 "bbox_row": row_bbox,
                 "bbox_date": cell_boxes["date"],
                 "bbox_description": cell_boxes["description"],
-                "bbox_amount": cell_boxes["amount"],
+                "bbox_category": cell_boxes["category"],
+                "bbox_money_in": cell_boxes["money_in"],
+                "bbox_money_out": cell_boxes["money_out"],
+                "bbox_amount": cell_boxes.get("money_in", _default_bbox()),
                 "bbox_balance": cell_boxes["balance"],
                 "bbox_charges": cell_boxes["charges"],
                 "bank_id": profile.id,
@@ -586,31 +701,92 @@ def _parse_standard_bank_line_entries(
 
 def _parse_capitec_personal_text(text: str, forced_year: int | None = None) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
+    money_re = re.compile(r"[+-]?\d{1,3}(?:[ ,]\d{3})*\.\d{2}[+-]?")
+    date_re = re.compile(r"^(?P<date>\d{2}/\d{2}/\d{4})\s+(?P<body>.+)$")
+    footer_prefixes = (
+        "24hr client care", "bank is an authorised", "unique document no",
+        "* includes vat", "capitec bank",
+    )
+
     for raw in text.splitlines():
         line = " ".join(raw.strip().split())
-        m = re.match(r"^(?P<date>\d{2}/\d{2}/\d{4})\s+(?P<body>.+)$", line)
+        if not line:
+            continue
+
+        line_lower = line.lower()
+        if any(line_lower.startswith(fp) for fp in footer_prefixes):
+            continue
+
+        m = date_re.match(line)
         if not m:
+            # Continuation line: append to previous row's description
+            if rows and line:
+                money_tokens = list(money_re.finditer(line))
+                if money_tokens:
+                    extra_desc = line[:money_tokens[0].start()].strip()
+                else:
+                    extra_desc = line.strip()
+                if extra_desc:
+                    rows[-1]["description"] = (rows[-1]["description"] + " " + extra_desc).strip()
             continue
+
         body = m.group("body")
-        money_tokens = list(re.finditer(r"[+-]?\d{1,3}(?:[ ,]\d{3})*\.\d{2}[+-]?", body))
-        if len(money_tokens) < 2:
+        money_tokens = list(money_re.finditer(body))
+        if not money_tokens:
+            # Date line with no money — could be start of multi-line row
+            rows.append({
+                "date": _normalize_date(m.group("date"), forced_year=forced_year),
+                "description": body.strip(),
+                "category": None,
+                "money_in": None,
+                "money_out": None,
+                "amount": None,
+                "balance": None,
+                "charges": None,
+            })
             continue
-        amount_match = money_tokens[-2]
-        balance_match = money_tokens[-1]
-        amount = _parse_signed_money_token(amount_match.group(0))
-        balance = _parse_signed_money_token(balance_match.group(0))
-        if amount is None or balance is None:
+
+        desc_text = body[:money_tokens[0].start()].strip()
+        if not desc_text:
             continue
-        description = body[:amount_match.start()].strip()
-        if not description:
-            continue
+
+        balance_val: float | None = None
+        money_in: float | None = None
+        money_out: float | None = None
+        charges_val: float | None = None
+
+        if len(money_tokens) >= 4:
+            money_in = _parse_signed_money_token(money_tokens[-4].group(0))
+            money_out = _parse_signed_money_token(money_tokens[-3].group(0))
+            charges_val = _parse_signed_money_token(money_tokens[-2].group(0))
+            balance_val = _parse_signed_money_token(money_tokens[-1].group(0))
+        elif len(money_tokens) >= 2:
+            balance_val = _parse_signed_money_token(money_tokens[-1].group(0))
+            amt = _parse_signed_money_token(money_tokens[-2].group(0))
+            if amt is not None and amt >= 0:
+                money_in = amt
+            else:
+                money_out = amt
+
+        if money_out is not None and money_out > 0:
+            money_out = -money_out
+
+        amount: float | None = None
+        if money_in is not None:
+            amount = abs(money_in)
+        elif money_out is not None:
+            amount = money_out
+
         rows.append(
             {
                 "date": _normalize_date(m.group("date"), forced_year=forced_year),
-                "description": description,
+                "description": desc_text,
+                "category": None,
+                "money_in": money_in,
+                "money_out": money_out,
                 "amount": amount,
-                "balance": balance,
-                "charges": None,
+                "balance": balance_val,
+                "charges": charges_val,
             }
         )
     return rows
@@ -736,15 +912,17 @@ def _capitec_personal_cell_bboxes(row_bbox: dict[str, float]) -> dict[str, dict[
     # Measured from Capitec Personal.pdf (595.28 x 841.88):
     #   Date        data: 0.0577 – 0.1249
     #   Description data: 0.1409 – ~0.50
-    #   Category    data: 0.5188 – ~0.62   (not a separate review column)
+    #   Category    data: 0.5188 – ~0.62
     #   Money In    data: 0.6598 – 0.7120
     #   Money Out   data: 0.7464 – 0.8031
     #   Fee         data: 0.8376 – 0.8682
     #   Balance     data: 0.8875 – 0.9398
     return {
         "date":        _col_bbox(row_bbox, 0.035, 0.133),
-        "description": _col_bbox(row_bbox, 0.133, 0.638),
-        "amount":      _col_bbox(row_bbox, 0.638, 0.821),
+        "description": _col_bbox(row_bbox, 0.133, 0.505),
+        "category":    _col_bbox(row_bbox, 0.505, 0.638),
+        "money_in":    _col_bbox(row_bbox, 0.638, 0.730),
+        "money_out":   _col_bbox(row_bbox, 0.730, 0.821),
         "charges":     _col_bbox(row_bbox, 0.821, 0.878),
         "balance":     _col_bbox(row_bbox, 0.878, 0.975),
     }
@@ -783,6 +961,10 @@ _COLUMN_BOUNDARIES: dict[str, dict[str, float]] = {
     },
     "capitec_personal": {
         "desc_category_split": 0.505,
+        "money_in_x_start": 0.638,
+        "money_out_x_start": 0.730,
+        "fee_x_start": 0.821,
+        "balance_x_start": 0.878,
     },
     "standard_bank": {
         "desc_end": 0.360,
@@ -1611,7 +1793,10 @@ def _parse_transactions_from_document_text_fallback(
             "post_date": row.get("post_date"),
             "transaction_date": row.get("transaction_date"),
             "description": row.get("description"),
+            "category": row.get("category"),
             "reference": row.get("reference"),
+            "money_in": row.get("money_in"),
+            "money_out": row.get("money_out"),
             "amount": amount,
             "balance": balance,
             "charges": row.get("charges"),

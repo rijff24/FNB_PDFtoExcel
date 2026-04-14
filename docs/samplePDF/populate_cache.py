@@ -5,7 +5,7 @@ sys.path.insert(0, ".")
 from pathlib import Path
 from app.services.document_ai import _process_document, _CACHE_DIR
 
-pdf_path = Path("docs/samplePDF/2. Apr23.pdf")
+pdf_path = Path("docs/samplePDF/FNB.pdf")
 pdf_bytes = pdf_path.read_bytes()
 print(f"PDF size: {len(pdf_bytes)} bytes")
 print(f"Cache dir: {_CACHE_DIR.resolve()}")

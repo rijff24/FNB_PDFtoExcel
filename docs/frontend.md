@@ -22,9 +22,9 @@ An interactive review interface with two panels:
 - Smooth scroll to highlighted region.
 
 **Right panel — Transactions Table**:
-- Columns: `#`, `Date`, `Description`, `Amount`, `Balance`, `Charges`, `Review`.
+- Bank-specific column templates loaded from `BANK_TABLE_TEMPLATES` (FNB, Capitec Business, Capitec Personal, Standard Bank each have their own column layout).
 - Rows with `review_state: "needs"` (or legacy `needs_review: true`) get a yellow background.
-- Per-cell hover highlights: hovering a cell (date, description, amount, balance, charges) highlights that field's bounding box on the PDF.
+- Per-cell hover highlights: hovering a cell highlights that field's bounding box on the PDF.
 - Row click highlights the entire row's bounding box.
 - Debounced clear (60ms) prevents flicker when moving between cells.
 - Editable spreadsheet behavior: double-click to edit, Enter/Escape/blur commit flow.
@@ -33,6 +33,40 @@ An interactive review interface with two panels:
   - `blank`: empty checkbox
   - `needs`: orange warning checkbox and highlighted row
   - `done`: green checked checkbox
+
+**Row Selection and Management**:
+- Click a row to select it (blue highlight). Click again to deselect.
+- Ctrl+Click (Cmd+Click on Mac) to toggle individual rows without deselecting others.
+- Shift+Click to select a range from the last-clicked row.
+- Escape clears all selections.
+- Toolbar buttons (enabled when rows are selected):
+  - **+ Above**: inserts an empty row above each selected row.
+  - **+ Below**: inserts an empty row below each selected row.
+  - **Delete**: removes all selected rows.
+- Delete key also removes selected rows (when not editing a cell).
+- All insert/delete operations are fully undoable/redoable.
+
+**Highlighting Toggle**:
+- A "Highlighting" toggle button in the toolbar enables/disables the PDF highlight overlay.
+- When unchecked, hover and click no longer draw bounding-box highlights on the PDF.
+- If scroll mode is `Auto` when highlighting is turned off, the UI switches to `Synced` mode to avoid highlight-driven auto-scroll behavior.
+- Re-enabling highlighting does not force a scroll mode change.
+
+**Scroll Modes** (segmented control in the toolbar, next to the Highlighting toggle):
+- **Auto** (default): hovering/clicking a table row scrolls the PDF viewer to center the matching bounding box vertically and horizontally.
+- **Sync**: bidirectional synchronized scrolling using center-based mapping and smoothing. Vertical and horizontal movement in one panel nudges the other panel to corresponding center positions.
+- **None**: no automatic scrolling. Highlighting still works if enabled, but neither panel auto-moves.
+
+**Table Zoom**:
+- A "Table Zoom" slider (50%–250%) in the toolbar applies a CSS `transform: scale()` to the transactions table.
+- Ctrl+Scroll (or trackpad pinch) over the table panel zooms the table.
+- Ctrl+Scroll (or trackpad pinch) over the PDF panel zooms the PDF.
+
+**Sync Zoom**:
+- A "Sync Zoom" checkbox links the PDF zoom and table zoom through a calibrated mapping instead of a strict 1:1 percentage.
+- Calibration target currently matches observed visual parity in review sessions: approximately `PDF 100% ≈ Table 53%` and `PDF 250% ≈ Table 123%`.
+- When checked, changing either zoom (via slider, Ctrl+Scroll, or pinch) updates both panels through this mapping.
+- Ctrl+Scroll/pinch uses a reduced zoom step (25% of the original increment) and applies a short zoom guard to prevent sync-scroll handlers from reacting to zoom-induced layout changes.
 
 ## Firebase Auth Bundle
 
@@ -91,13 +125,14 @@ This bundles the Firebase SDK and auth logic into a single IIFE that is loaded b
 
 ## Review UI — Highlight System
 
-The review page implements a per-field highlight system:
+The review page implements a per-field highlight system across a multi-page scrollable PDF viewer:
 
-1. Each transaction cell stores its bounding box in a `data-bbox` attribute (JSON string).
-2. On `mouseenter`, the bbox is parsed and `drawHighlight(bbox)` is called.
-3. `drawHighlight` creates an absolutely-positioned `<div class="pdf-highlight">` inside `#pdfOverlay`, positioned using the normalized bbox coordinates mapped to the canvas dimensions.
-4. The PDF viewer scrolls to center the highlighted region.
-5. On `mouseleave`, a 60ms debounce timer (`scheduleClear`) clears the highlight. Moving to an adjacent cell cancels the timer (`cancelClear`), preventing flicker.
+1. All PDF pages are rendered into the scrollable `.pdf-canvas-wrapper` container. Each page has its own canvas and overlay stored in the `pageElements` array.
+2. Each transaction cell stores its bounding box in a `data-bbox` attribute (JSON string). Each table row stores its `data-page-index`.
+3. On `mouseenter` (when highlighting is enabled), the bbox is parsed and `drawHighlight(bbox, pageIndex)` is called.
+4. `drawHighlight` creates an absolutely-positioned `<div class="pdf-highlight">` inside the target page's overlay, positioned using normalized bbox coordinates mapped to the canvas dimensions.
+5. When scroll mode is `Auto`, `drawHighlight` scrolls to center the highlighted bbox (both vertical and horizontal axes). In `Sync` mode, scrolling is driven by bidirectional sync logic. In `None` mode, no auto-scrolling occurs.
+6. On `mouseleave`, a 60ms debounce timer (`scheduleClear`) clears the highlight. Moving to an adjacent cell cancels the timer (`cancelClear`), preventing flicker.
 
 ### Coordinate System
 
@@ -121,6 +156,8 @@ The review screen keeps an in-memory mutable `transactions` array as the source 
 ### Undo / Redo
 
 - Action stacks (`undoStack` / `redoStack`) track up to 50 actions.
+- Supports single-cell edits (field change) and bulk operations (row insert/delete).
+- Bulk actions store the affected rows and their indices so undo can fully restore them.
 - Keyboard shortcuts:
   - `Ctrl+Z`: undo
   - `Ctrl+Y` or `Ctrl+Shift+Z`: redo
@@ -139,5 +176,23 @@ The review screen keeps an in-memory mutable `transactions` array as the source 
 ### Column and panel resizing
 
 - The table columns are user-resizable by dragging header-edge resizers.
+- Double-clicking a column resizer auto-fits that column to its widest visible content.
 - The PDF/table split is user-resizable via the vertical handle between panels.
 - Column widths are fixed during edit mode so entering edit mode does not cause column expansion.
+
+### Horizontal scrolling
+
+- Both the PDF content wrapper and transactions table wrapper expose explicit horizontal scrollbars (`overflow-x: scroll`).
+- `scrollbar-gutter: stable both-edges` is applied so horizontal scrollbar space stays reserved and avoids layout jitter.
+
+### Keyboard and gesture shortcuts
+
+| Shortcut | Action |
+|---|---|
+| `Ctrl+Z` | Undo |
+| `Ctrl+Y` / `Ctrl+Shift+Z` | Redo |
+| `Delete` (when rows selected) | Delete selected rows |
+| `Escape` | Clear selection |
+| `Ctrl+Scroll` over PDF | Zoom PDF in/out |
+| `Ctrl+Scroll` over table | Zoom table in/out |
+| Trackpad pinch over either panel | Same as Ctrl+Scroll (browser fires `wheel` with `ctrlKey`) |

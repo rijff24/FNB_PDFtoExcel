@@ -7,7 +7,7 @@ from pathlib import Path
 from app.services.document_ai import _process_document
 from app.services.parser import parse_transactions_from_document
 
-pdf_bytes = Path("docs/samplePDF/2. Apr23.pdf").read_bytes()
+pdf_bytes = Path("docs/samplePDF/FNB.pdf").read_bytes()
 doc = _process_document(pdf_bytes)
 txs = parse_transactions_from_document(doc)
 

@@ -2,7 +2,7 @@
 
 **File**: `app/services/document_ai.py`
 
-The application uses Google Cloud's **Document AI** service with a **Bank Statement Parser** processor to perform OCR and layout extraction on FNB statement PDFs.
+The application uses Google Cloud's **Document AI** service with **Bank Statement Parser** processors to perform OCR and layout extraction on bank statement PDFs. Each supported bank can have its own Document AI processor configured via environment variables (see `app/services/banks.py` for processor env var names).
 
 ## Overview
 
@@ -19,7 +19,10 @@ The visual-row parser (see [parser.md](parser.md)) relies on the layout informat
 |---|---|---|
 | `GOOGLE_CLOUD_PROJECT` | Yes (when OCR enabled) | GCP project ID |
 | `DOCUMENTAI_LOCATION` | Yes (when OCR enabled) | Processor region (e.g., `eu`) |
-| `DOCUMENTAI_PROCESSOR_ID` | Yes (when OCR enabled) | Document AI processor ID |
+| `DOCUMENTAI_PROCESSOR_ID` | Yes (when OCR enabled) | Document AI processor ID (FNB default) |
+| `DOCUMENTAI_PROCESSOR_ID_CAPITEC` | Optional | Capitec Business processor ID |
+| `DOCUMENTAI_PROCESSOR_ID_CAPITEC_PERSONAL` | Optional | Capitec Personal processor ID |
+| `DOCUMENTAI_PROCESSOR_ID_STANDARD_BANK` | Optional | Standard Bank processor ID |
 
 ## API Functions
 
@@ -30,6 +33,10 @@ Primary function used by the preview/review flow. Returns the full Document AI `
 ### `extract_text_with_document_ai(pdf_bytes: bytes) -> str`
 
 Backwards-compatible helper that returns only the extracted text (no layout data). Used by the direct download flow when OCR is enabled.
+
+### `_extract_docai_line_entries(document: Document) -> list[dict]`
+
+Defined in `parser.py`. Reconstructs row-by-row line entries with per-word x-positions from a Document AI `Document` object. Groups tokens by y-position into lines, mirroring the output format of `_extract_text_line_entries` (pdfplumber), so the same bank-specific parsers can consume both.
 
 ### `_process_document(pdf_bytes: bytes) -> Document`
 
