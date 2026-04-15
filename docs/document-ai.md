@@ -38,6 +38,12 @@ Backwards-compatible helper that returns only the extracted text (no layout data
 
 Defined in `parser.py`. Reconstructs row-by-row line entries with per-word x-positions from a Document AI `Document` object. Groups tokens by y-position into lines, mirroring the output format of `_extract_text_line_entries` (pdfplumber), so the same bank-specific parsers can consume both.
 
+For Standard Bank OCR, these line entries are consumed by a numeric-anchor parser that:
+- finalizes rows only when Date + (Debit/Credit) + Balance are present,
+- appends continuation detail text to the most recent anchored row,
+- filters known header/footer/legal lines,
+- resets continuation state at page boundaries to prevent cross-page text leakage.
+
 ### `_process_document(pdf_bytes: bytes) -> Document`
 
 Internal function that handles the actual API call. Checks the file cache first, calls the API only on cache miss, and writes the result to cache on success.

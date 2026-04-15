@@ -29,6 +29,9 @@ An interactive review interface with two panels:
 - Debounced clear (60ms) prevents flicker when moving between cells.
 - Editable spreadsheet behavior: double-click to edit, Enter/Escape/blur commit flow.
 - Toolbar actions: Undo, Redo, Save, Download Excel, unsaved-changes indicator.
+- For Standard Bank:
+  - `Service fee` displays `#` markers.
+  - `Debits` and `Credits` highlight independently (separate bbox fields).
 - Review column tri-state checkbox:
   - `blank`: empty checkbox
   - `needs`: orange warning checkbox and highlighted row
@@ -182,8 +185,13 @@ The review screen keeps an in-memory mutable `transactions` array as the source 
 
 ### Horizontal scrolling
 
-- Both the PDF content wrapper and transactions table wrapper expose explicit horizontal scrollbars (`overflow-x: scroll`).
+- Both the PDF content wrapper and transactions table wrapper expose horizontal scrollbars.
 - `scrollbar-gutter: stable both-edges` is applied so horizontal scrollbar space stays reserved and avoids layout jitter.
+
+### Description wrapping behavior
+
+- Parsed descriptions are rendered as normal wrapped text (`white-space: normal`).
+- Explicit parser line breaks are flattened, so visible breaks occur only when text reaches cell width.
 
 ### Keyboard and gesture shortcuts
 

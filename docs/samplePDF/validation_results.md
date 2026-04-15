@@ -7,9 +7,9 @@ Command run from repo root:
 Latest observed output:
 
 - `FNB.pdf` (`fnb`): `rows=0`, `needs_review=0`
-- `Capitec Business.pdf` (`capitec`): `rows=77`, `needs_review=0`
-- `Capitec Personal.pdf` (`capitec_personal`): `rows=90`, `needs_review=0`
-- `Standard Bank.pdf` (`standard_bank`): `rows=167`, `needs_review=0`
+- `Capitec Business.pdf` (`capitec`): `rows=78`, `needs_review=3`
+- `Capitec Personal.pdf` (`capitec_personal`): `rows=95`, `needs_review=5`
+- `Standard Bank.pdf` (`standard_bank`): `rows=168`, `needs_review=0`
 
 Notes:
 

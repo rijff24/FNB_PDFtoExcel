@@ -654,48 +654,214 @@ def _parse_standard_bank_line_entries(
         inferred_year = datetime.now().year
 
     rows: list[dict[str, Any]] = []
+    table_started = False
+    last_row_idx: int | None = None
+    current_page_index: int | None = None
+    skip_desc_prefixes = (
+        "please verify all transactions",
+        "please visit our website",
+        "www.standardbank.co.za",
+        "the standard bank of south africa",
+        "vat reg",
+        "we subscribe to the code of banking practice",
+        "we subscribe to the code of banking",
+        "standard bank",
+        "po box",
+        "month-end balance",
+        "details",
+        "service fee",
+        "debits",
+        "credits",
+        "date",
+        "balance",
+    )
+
+    def _should_skip_desc_text(text: str) -> bool:
+        cleaned = " ".join((text or "").strip().split()).lower()
+        if not cleaned:
+            return True
+        return any(cleaned.startswith(prefix) for prefix in skip_desc_prefixes)
+
+    def _append_continuation_to_last_row(extra_desc: str, extra_bbox: dict[str, float], has_charge: bool) -> None:
+        nonlocal last_row_idx
+        if last_row_idx is None or last_row_idx < 0 or last_row_idx >= len(rows):
+            return
+        if _should_skip_desc_text(extra_desc):
+            return
+        row = rows[last_row_idx]
+        current_desc = str(row.get("description") or "").strip()
+        if extra_desc:
+            normalized = " ".join(extra_desc.split())
+            if normalized and normalized not in current_desc:
+                row["description"] = (current_desc + " " + normalized).strip() if current_desc else normalized
+        if has_charge and not row.get("charges"):
+            row["charges"] = "#"
+        merged_bbox = _merge_bboxes([row.get("bbox_row") or _default_bbox(), extra_bbox]) or (row.get("bbox_row") or _default_bbox())
+        row["bbox"] = merged_bbox
+        row["bbox_row"] = merged_bbox
+        merged_cell_boxes = _standard_bank_cell_bboxes(merged_bbox)
+        row["bbox_description"] = merged_cell_boxes["description"]
+        row["bbox_charges"] = merged_cell_boxes["charges"]
+
     for entry in line_entries:
+        entry_page_index = int(entry.get("page_index", 0))
+        if current_page_index is None:
+            current_page_index = entry_page_index
+        elif entry_page_index != current_page_index:
+            # New page: do not let previous-page continuation text leak
+            # into the last row of the prior page.
+            current_page_index = entry_page_index
+            table_started = False
+            last_row_idx = None
+
         line = _preprocess_bank_text(str(entry.get("text", "")).strip())
-        m = re.match(
-            (
-                r"^(?P<desc>.+?)\s+"
-                r"(?P<amount>[+-]?\d{1,3}(?:,\d{3})*\.\d{2}[+-]?)\s+"
-                r"(?P<month>\d{2})\s+(?P<day>\d{2})\s+"
-                r"(?P<balance>[+-]?\d{1,3}(?:,\d{3})*\.\d{2}[+-]?)$"
-            ),
-            line,
-        )
-        if not m:
+        line_lower = line.lower()
+        if not table_started and (
+            ("details" in line_lower and "balance" in line_lower)
+            or ("debits" in line_lower and "credits" in line_lower)
+        ):
+            table_started = True
             continue
-        amount = _parse_signed_money_token(m.group("amount"))
-        balance = _parse_signed_money_token(m.group("balance"))
-        if amount is None or balance is None:
-            continue
-        date_guess = f"{int(m.group('day'))}/{int(m.group('month'))}/{inferred_year}"
+
         row_bbox = entry.get("bbox_row") or _default_bbox()
         cell_boxes = _standard_bank_cell_bboxes(row_bbox)
-        rows.append(
-            {
-                "date": _normalize_date(date_guess, forced_year=inferred_year),
-                "post_date": _normalize_date(date_guess, forced_year=inferred_year),
+        entry_words = entry.get("words") or []
+
+        def _zone_text(x0: float, x1: float) -> str:
+            tokens = [
+                str(w.get("text", "")).strip()
+                for w in entry_words
+                if x0 <= float(w.get("x_min", 0.0)) < x1 and str(w.get("text", "")).strip()
+            ]
+            return " ".join(tokens).strip()
+
+        desc_text = ""
+        debit_val: float | None = None
+        credit_val: float | None = None
+        balance: float | None = None
+        charges_marker: str | None = None
+        date_guess: str | None = None
+
+        if entry_words:
+            desc_text = _zone_text(float(cell_boxes["description"]["x_min"]), float(cell_boxes["description"]["x_max"]))
+            charges_text = _zone_text(float(cell_boxes["charges"]["x_min"]), float(cell_boxes["charges"]["x_max"]))
+            debit_text = _zone_text(float(cell_boxes["debits"]["x_min"]), float(cell_boxes["debits"]["x_max"]))
+            credit_text = _zone_text(float(cell_boxes["credits"]["x_min"]), float(cell_boxes["credits"]["x_max"]))
+            date_text = _zone_text(float(cell_boxes["date"]["x_min"]), float(cell_boxes["date"]["x_max"]))
+            balance_text = _zone_text(float(cell_boxes["balance"]["x_min"]), float(cell_boxes["balance"]["x_max"]))
+
+            debit_val = _parse_signed_money_token(debit_text) if debit_text else None
+            credit_val = _parse_signed_money_token(credit_text) if credit_text else None
+            balance = _parse_signed_money_token(balance_text) if balance_text else None
+            if "#" in charges_text:
+                charges_marker = "#"
+
+            dm = re.search(r"(?P<month>\d{2})\s+(?P<day>\d{2})", date_text)
+            if dm:
+                date_guess = f"{int(dm.group('day'))}/{int(dm.group('month'))}/{inferred_year}"
+
+        # regex fallback when no word-level fields are available
+        if not date_guess or balance is None or (debit_val is None and credit_val is None and "balance brought forward" not in desc_text.lower()):
+            m = re.match(
+                (
+                    r"^(?P<desc>.+?)\s+"
+                    r"(?P<amount>[+-]?\d{1,3}(?:,\d{3})*\.\d{2}[+-]?)\s+"
+                    r"(?P<month>\d{2})\s+(?P<day>\d{2})\s+"
+                    r"(?P<balance>[+-]?\d{1,3}(?:,\d{3})*\.\d{2}[+-]?)$"
+                ),
+                line,
+            )
+            if m:
+                if not desc_text:
+                    desc_text = m.group("desc").strip()
+                amt = _parse_signed_money_token(m.group("amount"))
+                balance = _parse_signed_money_token(m.group("balance"))
+                if amt is not None:
+                    if amt < 0:
+                        debit_val = abs(amt)
+                        credit_val = None
+                    elif amt > 0:
+                        debit_val = None
+                        credit_val = amt
+                date_guess = f"{int(m.group('day'))}/{int(m.group('month'))}/{inferred_year}"
+
+        if not table_started:
+            continue
+
+        desc_text = " ".join((desc_text or "").split())
+        desc_lower = desc_text.lower()
+        is_opening_row = "balance brought forward" in desc_lower and date_guess and balance is not None
+        has_numeric_anchor = bool(date_guess and balance is not None and (debit_val is not None or credit_val is not None))
+
+        if is_opening_row:
+            norm_date = _normalize_date(date_guess, forced_year=inferred_year)
+            rows.append(
+                {
+                    "date": norm_date,
+                    "post_date": norm_date,
+                    "transaction_date": None,
+                    "description": "BALANCE BROUGHT FORWARD",
+                    "reference": None,
+                    "amount": None,
+                    "balance": balance,
+                    "charges": None,
+                    "page_index": entry_page_index,
+                    "needs_review": False,
+                    "bbox": row_bbox,
+                    "bbox_row": row_bbox,
+                    "bbox_date": cell_boxes["date"],
+                    "bbox_description": cell_boxes["description"],
+                    "bbox_amount": cell_boxes["amount"],
+                    "bbox_debits": cell_boxes["debits"],
+                    "bbox_credits": cell_boxes["credits"],
+                    "bbox_balance": cell_boxes["balance"],
+                    "bbox_charges": cell_boxes["charges"],
+                    "bank_id": profile.id,
+                }
+            )
+            last_row_idx = None
+            continue
+
+        if has_numeric_anchor:
+            amount: float | None = None
+            if debit_val not in (None, 0):
+                amount = -abs(float(debit_val))
+            elif credit_val not in (None, 0):
+                amount = abs(float(credit_val))
+            if amount is None:
+                continue
+            if _should_skip_desc_text(desc_text):
+                continue
+            norm_date = _normalize_date(date_guess, forced_year=inferred_year)
+            row = {
+                "date": norm_date,
+                "post_date": norm_date,
                 "transaction_date": None,
-                "description": m.group("desc").strip(),
+                "description": desc_text,
                 "reference": None,
                 "amount": amount,
                 "balance": balance,
-                "charges": None,
-                "page_index": int(entry.get("page_index", 0)),
+                "charges": charges_marker or ("#" if "fee" in desc_lower else None),
+                "page_index": entry_page_index,
                 "needs_review": False,
                 "bbox": row_bbox,
                 "bbox_row": row_bbox,
                 "bbox_date": cell_boxes["date"],
                 "bbox_description": cell_boxes["description"],
                 "bbox_amount": cell_boxes["amount"],
+                "bbox_debits": cell_boxes["debits"],
+                "bbox_credits": cell_boxes["credits"],
                 "bbox_balance": cell_boxes["balance"],
                 "bbox_charges": cell_boxes["charges"],
                 "bank_id": profile.id,
             }
-        )
+            rows.append(row)
+            last_row_idx = len(rows) - 1
+            continue
+
+        # Continuation description line: append to previous anchored transaction.
+        if desc_text and not _should_skip_desc_text(desc_text):
+            _append_continuation_to_last_row(desc_text, row_bbox, charges_marker == "#")
     return rows
 
 
@@ -821,13 +987,23 @@ def _parse_standard_bank_text(text: str, forced_year: int | None = None) -> list
         if amount is None or balance is None:
             continue
         date_guess = f"{int(m.group('day'))}/{int(m.group('month'))}/{inferred_year}"
+        desc_text = m.group("desc").strip()
+        charges_marker: str | None = "#" if "fee" in desc_text.lower() else None
+        cell_boxes = _standard_bank_cell_bboxes(_default_bbox())
         rows.append(
             {
                 "date": _normalize_date(date_guess, forced_year=inferred_year),
-                "description": m.group("desc").strip(),
+                "description": desc_text,
                 "amount": amount,
                 "balance": balance,
-                "charges": None,
+                "charges": charges_marker,
+                "bbox_date": cell_boxes["date"],
+                "bbox_description": cell_boxes["description"],
+                "bbox_amount": cell_boxes["amount"],
+                "bbox_debits": cell_boxes["debits"],
+                "bbox_credits": cell_boxes["credits"],
+                "bbox_balance": cell_boxes["balance"],
+                "bbox_charges": cell_boxes["charges"],
             }
         )
     return rows
@@ -936,12 +1112,31 @@ def _standard_bank_cell_bboxes(row_bbox: dict[str, float]) -> dict[str, dict[str
     #   Credits     data: 0.5683 – 0.6146  (header only, no sample data)
     #   Date        data: 0.6557 – 0.6936
     #   Balance     data: 0.7721 – 0.8604
+    y_min = float(row_bbox.get("y_min", 0.0))
+    y_max = float(row_bbox.get("y_max", 1.0))
+    row_h = max(0.0, y_max - y_min)
+    # Standard Bank numeric tokens render compactly; trim vertical span
+    # to avoid overly tall highlights on Debits/Credits/Balance.
+    # Keep the numeric highlight centered and compact so it wraps the
+    # token itself rather than most of the row height.
+    y_mid = y_min + row_h * 0.5
+    half_h = row_h * 0.17
+    tight_y_min = max(0.0, y_mid - half_h)
+    tight_y_max = min(1.0, y_mid + half_h)
+    tight_row = {
+        "x_min": float(row_bbox.get("x_min", 0.0)),
+        "y_min": tight_y_min,
+        "x_max": float(row_bbox.get("x_max", 1.0)),
+        "y_max": tight_y_max,
+    }
     return {
         "description": _col_bbox(row_bbox, 0.035, 0.360),
-        "charges":     _col_bbox(row_bbox, 0.360, 0.450),
-        "amount":      _col_bbox(row_bbox, 0.450, 0.640),
+        "charges":     _col_bbox(tight_row, 0.366, 0.430),
+        "debits":      _col_bbox(tight_row, 0.462, 0.548),
+        "credits":     _col_bbox(tight_row, 0.562, 0.626),
+        "amount":      _col_bbox(tight_row, 0.462, 0.626),
         "date":        _col_bbox(row_bbox, 0.640, 0.740),
-        "balance":     _col_bbox(row_bbox, 0.740, 0.975),
+        "balance":     _col_bbox(tight_row, 0.772, 0.868),
     }
 
 

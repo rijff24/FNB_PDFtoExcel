@@ -36,7 +36,7 @@
             position: relative;
             background: #020817;
             border-radius: 18px;
-            padding: 0.75rem 0.75rem 1rem;
+            padding: 0 0.75rem 0.75rem;
             box-shadow:
                 0 18px 40px rgba(15, 23, 42, 0.45),
                 0 0 0 1px rgba(148, 163, 184, 0.22);
@@ -51,16 +51,23 @@
             letter-spacing: 0.08em;
             text-transform: uppercase;
             color: #94a3b8;
-            margin-bottom: 0.25rem;
+            margin: 0;
+            position: static;
+            padding: 0.2rem 0 0.15rem;
         }
 
         .pdf-toolbar {
             display: flex;
             justify-content: space-between;
             align-items: center;
-            margin-bottom: 0.6rem;
+            margin: 0;
             font-size: 0.8rem;
             color: #9ca3af;
+            position: sticky;
+            top: 0;
+            z-index: 7;
+            background: #020817;
+            padding: 0.1rem 0 0.35rem;
         }
 
         .pdf-toolbar label {
@@ -78,6 +85,38 @@
             overflow-x: scroll;
             overflow-y: visible;
             scrollbar-gutter: stable both-edges;
+            margin-bottom: 0;
+        }
+
+        .sticky-x-scroll {
+            position: sticky;
+            bottom: 0;
+            z-index: 9;
+            height: 14px;
+            width: 100%;
+            overflow-x: auto;
+            overflow-y: hidden;
+        }
+
+        .sticky-x-scroll > div {
+            height: 1px;
+        }
+
+        .pdf-sticky-x {
+            background: #020817;
+            margin-bottom: 0;
+        }
+
+        .table-sticky-x {
+            background: #ffffff;
+        }
+
+        .status {
+            margin: 0.35rem 0 0;
+        }
+
+        .status:empty {
+            display: none;
         }
 
         .pdf-page {
@@ -155,9 +194,14 @@
             display: flex;
             align-items: center;
             gap: 0.4rem;
-            margin-top: 0.25rem;
+            margin-top: 0;
             flex-wrap: wrap;
             row-gap: 0.35rem;
+            position: sticky;
+            top: 0;
+            z-index: 8;
+            background: #ffffff;
+            padding: 0.2rem 0;
         }
 
         .table-toolbar .toolbar-left,
@@ -365,7 +409,7 @@
         .transactions-table-wrapper {
             max-height: 82vh;
             overflow-y: auto;
-            overflow-x: scroll;
+            overflow-x: auto;
             margin-top: 0.5rem;
             scrollbar-gutter: stable both-edges;
         }
@@ -399,6 +443,9 @@
             white-space: normal;
             word-break: break-word;
             min-width: 140px;
+            overflow: visible;
+            text-overflow: clip;
+            line-height: 1.3;
         }
 
         table.transactions td.num-cell {
@@ -429,7 +476,7 @@
             position: sticky;
             top: 0;
             background: #f8fafc;
-            z-index: 2;
+            z-index: 7;
             font-size: 0.74rem;
             letter-spacing: 0.08em;
             text-transform: uppercase;
@@ -541,6 +588,9 @@
                 <span id="zoomValue">150%</span>
             </div>
             <div class="pdf-canvas-wrapper" id="pdfCanvasWrapper"></div>
+            <div class="sticky-x-scroll pdf-sticky-x" id="pdfStickyX">
+                <div id="pdfStickyXInner"></div>
+            </div>
             <p id="pdfStatus" class="status"></p>
         </div>
 
@@ -638,10 +688,15 @@
         const sessionId = "{{ session_id }}";
         const pdfCanvasWrapper = document.getElementById("pdfCanvasWrapper");
         const pdfViewer = document.querySelector(".pdf-viewer");
+        const pdfStickyX = document.getElementById("pdfStickyX");
+        const pdfStickyXInner = document.getElementById("pdfStickyXInner");
         const pdfStatus = document.getElementById("pdfStatus");
         const tableStatus = document.getElementById("tableStatus");
         const tbody = document.querySelector("#transactionsTable tbody");
         const transactionsTable = document.getElementById("transactionsTable");
+        const transactionsTableWrapper = document.querySelector(".transactions-table-wrapper");
+        const tableStickyX = document.getElementById("tableStickyX");
+        const tableStickyXInner = document.getElementById("tableStickyXInner");
         const transactionsColgroup = document.getElementById("transactionsColgroup");
         const transactionsHeaderRow = transactionsTable && transactionsTable.tHead
             ? transactionsTable.tHead.rows[0]
@@ -670,6 +725,8 @@
         let zoomGuardTimer = null;
         let renderGeneration = 0;
         let pageElements = [];
+        let refreshPdfStickyX = function () {};
+        let refreshTableStickyX = function () {};
         const PDF_SYNC_MIN = 1.0;
         const TABLE_SYNC_AT_PDF_MIN = 0.53;
         const PDF_SYNC_MAX = 2.5;
@@ -713,11 +770,12 @@
                 { field: "balance", label: "Balance", colClass: "col-balance", bboxField: "bbox_balance", numeric: true, editable: true, descCell: false }
             ],
             standard_bank: [
+                { field: "description", label: "Details", colClass: "col-desc", bboxField: "bbox_description", numeric: false, editable: true, descCell: true },
+                { field: "charges", label: "Service fee", colClass: "col-charges", bboxField: "bbox_charges", numeric: false, editable: false, descCell: false },
+                { field: "debits", label: "Debits", colClass: "col-money-out", bboxField: "bbox_debits", numeric: true, editable: false, descCell: false },
+                { field: "credits", label: "Credits", colClass: "col-money-in", bboxField: "bbox_credits", numeric: true, editable: false, descCell: false },
                 { field: "date", label: "Date", colClass: "col-date", bboxField: "bbox_date", numeric: false, editable: true, descCell: false },
-                { field: "description", label: "Description", colClass: "col-desc", bboxField: "bbox_description", numeric: false, editable: true, descCell: true },
-                { field: "amount", label: "Amount", colClass: "col-amount", bboxField: "bbox_amount", numeric: true, editable: true, descCell: false },
-                { field: "balance", label: "Balance", colClass: "col-balance", bboxField: "bbox_balance", numeric: true, editable: true, descCell: false },
-                { field: "charges", label: "Fees", colClass: "col-charges", bboxField: "bbox_charges", numeric: true, editable: true, descCell: false }
+                { field: "balance", label: "Balance", colClass: "col-balance", bboxField: "bbox_balance", numeric: true, editable: true, descCell: false }
             ]
         };
 
@@ -776,6 +834,53 @@
         }
 
         function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
+
+        function getColumnValue(tx, col) {
+            if (col.field === "debits") {
+                var amount = Number(tx.amount);
+                return !isNaN(amount) && amount < 0 ? Math.abs(amount) : null;
+            }
+            if (col.field === "credits") {
+                var creditAmount = Number(tx.amount);
+                return !isNaN(creditAmount) && creditAmount > 0 ? creditAmount : null;
+            }
+            if (col.field === "charges" && activeBankId === "standard_bank") {
+                if (tx.charges != null && String(tx.charges).trim() !== "") {
+                    return "#";
+                }
+                var desc = String(tx.description || "").toLowerCase();
+                return desc.indexOf("fee") >= 0 ? "#" : "";
+            }
+            return tx[col.field];
+        }
+
+        function bindStickyHorizontalScrollbar(sourceEl, stickyEl, innerEl) {
+            if (!sourceEl || !stickyEl || !innerEl) {
+                return function () {};
+            }
+            var syncing = false;
+            function refresh() {
+                var fullWidth = Math.max(sourceEl.scrollWidth, sourceEl.clientWidth);
+                innerEl.style.width = fullWidth + "px";
+                stickyEl.scrollLeft = sourceEl.scrollLeft;
+                stickyEl.style.display = sourceEl.scrollWidth > sourceEl.clientWidth + 1 ? "block" : "none";
+            }
+            sourceEl.addEventListener("scroll", function () {
+                if (syncing) return;
+                syncing = true;
+                stickyEl.scrollLeft = sourceEl.scrollLeft;
+                requestAnimationFrame(function () { syncing = false; });
+            }, { passive: true });
+            stickyEl.addEventListener("scroll", function () {
+                if (syncing) return;
+                syncing = true;
+                sourceEl.scrollLeft = stickyEl.scrollLeft;
+                requestAnimationFrame(function () { syncing = false; });
+            }, { passive: true });
+            window.addEventListener("resize", refresh);
+            refresh();
+            return refresh;
+        }
 
         function formatCurrency(value) {
             if (value == null || value === "") return "";
@@ -1090,6 +1195,7 @@
                 for (var i = 1; i <= pdfDoc.numPages; i++) {
                     await renderPageInContainer(i);
                 }
+                refreshPdfStickyX();
                 setPdfStatus("");
             } catch (err) {
                 console.error(err);
@@ -1162,6 +1268,7 @@
             if (gen === renderGeneration && lastBbox) {
                 drawHighlight(lastBbox, lastBboxPage, false);
             }
+            refreshPdfStickyX();
         }
 
         function renderTable() {
@@ -1200,7 +1307,7 @@
                     if (col.descCell) td.classList.add("desc-cell");
                     if (col.numeric) td.classList.add("num-cell");
 
-                    var value = tx[col.field];
+                    var value = getColumnValue(tx, col);
                     td.textContent = col.numeric ? formatCurrency(value) : (value != null ? String(value) : "");
                     var bbox = tx[col.bboxField] || rowBbox;
                     if (bbox) td.dataset.bbox = JSON.stringify(bbox);
@@ -1440,6 +1547,7 @@
             input.addEventListener("blur", function () {
                 finish(true);
             });
+            refreshTableStickyX();
         }
 
         /* ── Draggable resize handle ── */
@@ -1911,12 +2019,14 @@
                 }
                 if (tableZoomSlider) tableZoomSlider.value = String(tableZoom);
                 if (tableZoomLabel) tableZoomLabel.textContent = Math.round(tableZoom * 100) + "%";
+                refreshTableStickyX();
             }
 
             function applyPdfZoom() {
                 if (zoomSlider) zoomSlider.value = String(currentZoom);
                 if (zoomValue) zoomValue.textContent = Math.round(currentZoom * 100) + "%";
                 if (pdfDoc) rerenderAllPages();
+                refreshPdfStickyX();
             }
 
             if (tableZoomSlider) {
@@ -1973,6 +2083,11 @@
             if (layout && pdfPanel && window.innerWidth > 1024) {
                 pdfPanel.style.width = Math.round(layout.clientWidth * 0.45) + "px";
             }
+
+            refreshPdfStickyX = bindStickyHorizontalScrollbar(pdfCanvasWrapper, pdfStickyX, pdfStickyXInner);
+            refreshTableStickyX = bindStickyHorizontalScrollbar(transactionsTableWrapper, tableStickyX, tableStickyXInner);
+            refreshPdfStickyX();
+            refreshTableStickyX();
 
             initToolbar();
             initColumnResize();

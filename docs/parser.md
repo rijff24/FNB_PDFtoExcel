@@ -187,8 +187,19 @@ Used when OCR is disabled (pdfplumber path) or as a general-purpose fallback. It
 - Multi-line transaction merging for wrapped descriptions and categories.
 
 ### Standard Bank
-- Columns: Description, Amount, Date (MM DD), Balance
-- Date is inferred from a two-digit month+day pair plus a year extracted from the document header.
+- Review columns: Details, Service fee, Debits, Credits, Date, Balance
+- Non-FNB layout parser uses position-based column zones for Standard Bank:
+  - Details text from the description zone only
+  - Service fee marker set to `#`
+  - Debits/Credits split into separate values and separate highlight boxes (`bbox_debits`, `bbox_credits`)
+- Uses numeric-anchor row assembly:
+  - A row is finalized only when Date + (Debit or Credit) + Balance are present.
+  - Continuation lines are appended to the previous anchored row's description.
+  - Descriptions are normalized to single-line text (no explicit `\n` in output).
+- Opening balance is emitted as a dedicated row:
+  - `BALANCE BROUGHT FORWARD`, no amount, date + balance preserved.
+- Header/footer guards prevent legal/footer lines from being appended to transaction descriptions.
+- OCR page-boundary guard resets continuation state when page changes so top-of-next-page headers cannot leak into the previous row.
 
 ## Tuning Column Boundaries
 
