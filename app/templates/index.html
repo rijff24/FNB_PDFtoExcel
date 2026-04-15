@@ -34,18 +34,20 @@
                 <button type="button" id="googleSignInBtn">Sign in with Google</button>
 
                 <div class="divider"></div>
+                <form id="emailSignInForm" class="auth-block">
+                    <label for="emailInput">Email</label>
+                    <input id="emailInput" type="email" autocomplete="email" />
 
-                <label for="emailInput">Email</label>
-                <input id="emailInput" type="email" autocomplete="email" />
+                    <label for="passwordInput">Password</label>
+                    <input id="passwordInput" type="password" autocomplete="current-password" />
 
-                <label for="passwordInput">Password</label>
-                <input id="passwordInput" type="password" autocomplete="current-password" />
-
-                <button type="button" id="emailSignInBtn">Sign in with Email/Password</button>
+                    <button type="submit" id="emailSignInBtn">Sign in with Email/Password</button>
+                </form>
             </div>
 
             <div id="signedInState" class="auth-block" style="display:none;">
                 <p>Signed in as: <span id="userEmail"></span></p>
+                <p><a href="/help">Help center</a></p>
                 <button type="button" id="signOutBtn">Sign out</button>
             </div>
 

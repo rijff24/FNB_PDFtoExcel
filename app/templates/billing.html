@@ -9,7 +9,7 @@
 <body>
 <main class="container">
     <h1>Billing &amp; Usage</h1>
-    <p><a href="/">&larr; Back to home</a></p>
+    <p><a href="/">&larr; Back to home</a> | <a href="/help">Help center</a></p>
 
     <section class="card billing-notice-card" id="noticesSection" style="display:none;">
         <h2>Important</h2>
@@ -28,35 +28,27 @@
     </section>
 
     <section class="card">
-        <h2>How we price each document</h2>
+        <h2>How we price each document (pooled)</h2>
         <p id="pricingExplain" class="status">Loading...</p>
         <div class="metric-grid">
             <p class="metric-item"><strong>Google (list) USD / document</strong><span id="metricGoogleUsd">&mdash;</span></p>
             <p class="metric-item"><strong>Our margin USD / document</strong><span id="metricMarginUsd">&mdash;</span></p>
             <p class="metric-item"><strong>Infrastructure share USD / doc</strong><span id="metricInfraShare">&mdash;</span></p>
             <p class="metric-item"><strong>USD &rarr; ZAR rate</strong><span id="metricFx">&mdash;</span></p>
-            <p class="metric-item"><strong>OCR tier price (USD)</strong><span id="metricTierUsd">&mdash;</span></p>
-            <p class="metric-item"><strong>OCR tier price (ZAR)</strong><span id="metricTierZar">&mdash;</span></p>
-            <p class="metric-item"><strong>Non-OCR tier price (USD)</strong><span id="metricNonOcrUsd">&mdash;</span></p>
-            <p class="metric-item"><strong>Non-OCR tier price (ZAR)</strong><span id="metricNonOcrZar">&mdash;</span></p>
+            <p class="metric-item"><strong>OCR unit price (USD)</strong><span id="metricTierUsd">&mdash;</span></p>
+            <p class="metric-item"><strong>OCR unit price (ZAR)</strong><span id="metricTierZar">&mdash;</span></p>
+            <p class="metric-item"><strong>Non-OCR unit price (USD)</strong><span id="metricNonOcrUsd">&mdash;</span></p>
+            <p class="metric-item"><strong>Non-OCR unit price (ZAR)</strong><span id="metricNonOcrZar">&mdash;</span></p>
         </div>
-        <p class="status">Price drops as monthly volume increases. OCR-processed documents are billed at a tiered rate that includes Google's per-document charge, infrastructure amortization, and a fixed margin. Non-OCR extraction is billed at the same tier rate minus the Google Document AI charge (since Document AI is not used).</p>
-
-        <h3>Volume pricing tiers</h3>
-        <div style="overflow:auto;">
-            <table class="billing-table" id="tierTable">
-                <thead>
-                <tr>
-                    <th>Monthly volume (docs)</th>
-                    <th>OCR price / doc (USD)</th>
-                    <th>OCR price / doc (ZAR)</th>
-                    <th>Non-OCR price / doc (USD)</th>
-                    <th>Non-OCR price / doc (ZAR)</th>
-                </tr>
-                </thead>
-                <tbody id="tierBody"></tbody>
-            </table>
-        </div>
+        <p class="status">Live repricing: all documents in your current billing pool share infrastructure cost for the month. OCR documents add Google Document AI variable cost; non-OCR documents do not. Month-end finalization freezes totals and invoice values.</p>
+        <h3>Your estimate breakdown (real numbers)</h3>
+        <p id="formulaMode" class="status"></p>
+        <p id="formulaScope" class="status"></p>
+        <p id="formulaLineInfra" class="status"></p>
+        <p id="formulaLineOcr" class="status"></p>
+        <p id="formulaLineNonOcr" class="status"></p>
+        <p id="formulaLineTotal" class="status"></p>
+        <p id="formulaFinalized" class="status"></p>
     </section>
 
     <section class="card">
@@ -152,9 +144,14 @@
         const metricFx = document.getElementById("metricFx");
         const metricTierUsd = document.getElementById("metricTierUsd");
         const metricTierZar = document.getElementById("metricTierZar");
-        const metricEffectiveZar = document.getElementById("metricEffectiveZar");
         const pricingExplain = document.getElementById("pricingExplain");
-        const tierBody = document.getElementById("tierBody");
+        const formulaMode = document.getElementById("formulaMode");
+        const formulaScope = document.getElementById("formulaScope");
+        const formulaLineInfra = document.getElementById("formulaLineInfra");
+        const formulaLineOcr = document.getElementById("formulaLineOcr");
+        const formulaLineNonOcr = document.getElementById("formulaLineNonOcr");
+        const formulaLineTotal = document.getElementById("formulaLineTotal");
+        const formulaFinalized = document.getElementById("formulaFinalized");
         const transparencyBody = document.getElementById("transparencyBody");
         const transparencyDate = document.getElementById("transparencyDate");
         const transparencyScopeNote = document.getElementById("transparencyScopeNote");
@@ -320,31 +317,6 @@
             transparencyDate.textContent = eff ? ("Prices / estimates as of: " + eff) : "";
         }
 
-        function renderTierTable(pricing) {
-            tierBody.innerHTML = "";
-            var table = pricing.tier_table || [];
-            if (!table.length) return;
-            var currentVol = pricing.current_volume || 0;
-            var googleUsd = Number(pricing.google_usd_per_document || 0.75);
-            var fx = Number(pricing.usd_to_zar || 18.5);
-            table.forEach(function (row) {
-                var tr = document.createElement("tr");
-                var lo = row.min_docs || 1;
-                var hi = row.max_docs;
-                var inBracket = currentVol > 0 && currentVol >= lo && (hi == null || currentVol <= hi);
-                if (inBracket) { tr.style.fontWeight = "bold"; tr.style.background = "#eef6ff"; }
-                var nonOcrUsd = Math.max(0, row.price_usd - googleUsd);
-                var nonOcrZar = nonOcrUsd * fx;
-                tr.innerHTML =
-                    "<td>" + escapeHtml(row.label || lo) + "</td>" +
-                    "<td>" + formatUsd(row.price_usd) + "</td>" +
-                    "<td>" + formatRand(row.price_zar) + "</td>" +
-                    "<td>" + formatUsd(nonOcrUsd) + "</td>" +
-                    "<td>" + formatRand(nonOcrZar) + "</td>";
-                tierBody.appendChild(tr);
-            });
-        }
-
         function renderAppLimits(limits) {
             appLimitsList.innerHTML = "";
             const items = [
@@ -374,6 +346,15 @@
 
             const t = data.transparency || {};
             const pricing = data.pricing || {};
+            const mode = String(pricing.mode || "live");
+            const poolId = String(pricing.pool_id || "-");
+            const scope = String(pricing.scope || "user");
+            const infraPerDocUsd = Number(pricing.shared_infra_per_document_usd || 0);
+            const ocrUnitZar = Number(pricing.ocr_unit_zar || 0);
+            const nonOcrUnitZar = Number(pricing.non_ocr_unit_zar || 0);
+            const ocrSubtotalZar = Number((totalOcrDocs * ocrUnitZar).toFixed(6));
+            const nonOcrSubtotalZar = Number((totalNonOcrDocs * nonOcrUnitZar).toFixed(6));
+            const estimatedTotal = Number((ocrSubtotalZar + nonOcrSubtotalZar).toFixed(6));
 
             metricDocuments.textContent = String(totalDocs);
             metricBilled.textContent = formatRand(totalBilled);
@@ -382,24 +363,50 @@
 
             metricGoogleUsd.textContent = formatUsd(pricing.google_usd_per_document);
             metricMarginUsd.textContent = formatUsd(pricing.margin_per_document_usd);
-            var infraShare = pricing.infra_monthly_usd && totalDocs > 0
-                ? pricing.infra_monthly_usd / totalDocs : pricing.infra_monthly_usd || 0;
-            metricInfraShare.textContent = totalDocs > 0 ? formatUsd(infraShare) : ("~" + formatUsd(pricing.infra_monthly_usd) + "/mo total");
+            metricInfraShare.textContent = totalDocs > 0 ? formatUsd(infraPerDocUsd) : ("~" + formatUsd(pricing.infra_monthly_usd) + "/mo total");
             metricFx.textContent = pricing.usd_to_zar != null ? String(pricing.usd_to_zar) : "\u2014";
-            metricTierUsd.textContent = formatUsd(pricing.current_tier_price_usd);
-            metricTierZar.textContent = formatRand(pricing.current_tier_price_zar);
+            metricTierUsd.textContent = formatUsd(pricing.ocr_unit_usd);
+            metricTierZar.textContent = formatRand(pricing.ocr_unit_zar);
             var nonOcrUsdEl = document.getElementById("metricNonOcrUsd");
             var nonOcrZarEl = document.getElementById("metricNonOcrZar");
-            if (nonOcrUsdEl) nonOcrUsdEl.textContent = formatUsd(pricing.non_ocr_tier_price_usd);
-            if (nonOcrZarEl) nonOcrZarEl.textContent = formatRand(pricing.non_ocr_tier_price_zar);
+            if (nonOcrUsdEl) nonOcrUsdEl.textContent = formatUsd(pricing.non_ocr_unit_usd);
+            if (nonOcrZarEl) nonOcrZarEl.textContent = formatRand(pricing.non_ocr_unit_zar);
 
             var volText = totalDocs > 0
                 ? ("Your current volume: " + totalDocs + " docs this month.")
                 : "No documents processed yet this month.";
             pricingExplain.textContent = volText +
-                " Your per-document price is determined by monthly volume (see tier table below).";
+                " Pool scope: " + (pricing.scope || "user") +
+                ". Shared infra/doc: " + formatUsd(infraPerDocUsd) +
+                ". Mode: " + (pricing.mode || "live") + ".";
 
-            renderTierTable(pricing);
+            formulaMode.textContent = mode === "finalized"
+                ? "Pricing mode: Finalized for this month (values are locked)."
+                : "Pricing mode: Live estimate (reprices as pool usage changes).";
+            formulaScope.textContent = "Billing pool: " + scope + " (" + poolId + ")";
+            if (totalDocs > 0) {
+                formulaLineInfra.textContent =
+                    "1) Shared infrastructure per doc = " + formatUsd(pricing.infra_monthly_usd || 0) +
+                    " / " + totalDocs + " docs = " + formatUsd(infraPerDocUsd) + " per doc.";
+            } else {
+                formulaLineInfra.textContent =
+                    "1) Shared infrastructure per doc cannot be allocated yet because there are no documents this month.";
+            }
+            formulaLineOcr.textContent =
+                "2) OCR subtotal = " + totalOcrDocs + " × " + formatRand(ocrUnitZar) +
+                " = " + formatRand(ocrSubtotalZar) + ".";
+            formulaLineNonOcr.textContent =
+                "3) Non-OCR subtotal = " + totalNonOcrDocs + " × " + formatRand(nonOcrUnitZar) +
+                " = " + formatRand(nonOcrSubtotalZar) + ".";
+            formulaLineTotal.textContent =
+                "4) Estimated total = OCR subtotal + Non-OCR subtotal = " + formatRand(estimatedTotal) + ".";
+            const finalized = pricing.finalized || null;
+            if (finalized && mode === "finalized") {
+                const finalizedAt = finalized.finalized_at ? new Date(finalized.finalized_at).toLocaleString("en-ZA") : "-";
+                formulaFinalized.textContent = "Finalized at: " + finalizedAt + ". Finalized total: " + formatRand(finalized.total_billable || 0) + ".";
+            } else {
+                formulaFinalized.textContent = "This month has not been finalized yet.";
+            }
             renderNotices(t);
             renderTransparency(t);
             processorLimitsNote.textContent = t.processor_limits_note || "";

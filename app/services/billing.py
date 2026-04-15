@@ -53,6 +53,33 @@ class DocumentCostBreakdown:
 StatementCostBreakdown = DocumentCostBreakdown
 
 
+@dataclass(frozen=True)
+class BillingPoolSnapshot:
+    scope: str
+    pool_id: str
+    month: str
+    ocr_documents: int
+    non_ocr_documents: int
+    total_documents: int
+    shared_infra_per_document_usd: float
+    ocr_unit_usd: float
+    non_ocr_unit_usd: float
+    ocr_unit_zar: float
+    non_ocr_unit_zar: float
+    total_billable_zar: float
+    total_google_cost_zar: float
+    total_margin_zar: float
+    total_infra_share_zar: float
+
+
+@dataclass(frozen=True)
+class BillingModelContext:
+    google_usd_per_document: float
+    margin_per_document_usd: float
+    infra_monthly_usd: float
+    usd_to_zar: float
+
+
 def billing_enabled() -> bool:
     return os.getenv("BILLING_ENABLED", "false").strip().lower() in {"1", "true", "yes", "on"}
 
@@ -171,6 +198,103 @@ def calculate_document_cost(
         billable_total_zar=billable_total_zar,
         markup_pct=markup_pct,
         current_volume=vol,
+    )
+
+
+def build_billing_context(pricing: dict[str, Any]) -> BillingModelContext:
+    return BillingModelContext(
+        google_usd_per_document=max(0.0, float(pricing.get("google_usd_per_classified_document", 0.75) or 0.0)),
+        margin_per_document_usd=max(0.0, float(pricing.get("margin_per_document_usd", 0.05) or 0.0)),
+        infra_monthly_usd=max(0.0, float(pricing.get("infra_monthly_usd", 9.30) or 0.0)),
+        usd_to_zar=max(0.0, float(pricing.get("usd_to_zar", 18.5) or 0.0)),
+    )
+
+
+def calculate_pool_snapshot(
+    *,
+    scope: str,
+    pool_id: str,
+    month: str,
+    ocr_documents: int,
+    non_ocr_documents: int,
+    context: BillingModelContext,
+) -> BillingPoolSnapshot:
+    ocr_docs = max(0, int(ocr_documents))
+    non_ocr_docs = max(0, int(non_ocr_documents))
+    total_docs = ocr_docs + non_ocr_docs
+    shared_infra_per_document_usd = round(context.infra_monthly_usd / total_docs, 6) if total_docs > 0 else 0.0
+    ocr_unit_usd = round(shared_infra_per_document_usd + context.google_usd_per_document + context.margin_per_document_usd, 6)
+    non_ocr_unit_usd = round(shared_infra_per_document_usd + context.margin_per_document_usd, 6)
+    fx = context.usd_to_zar
+    ocr_unit_zar = round(ocr_unit_usd * fx, 6)
+    non_ocr_unit_zar = round(non_ocr_unit_usd * fx, 6)
+    total_google_cost_zar = round(context.google_usd_per_document * fx * ocr_docs, 6)
+    total_margin_zar = round(context.margin_per_document_usd * fx * total_docs, 6)
+    total_infra_share_zar = round(shared_infra_per_document_usd * fx * total_docs, 6)
+    total_billable_zar = round((ocr_unit_zar * ocr_docs) + (non_ocr_unit_zar * non_ocr_docs), 6)
+    return BillingPoolSnapshot(
+        scope=scope,
+        pool_id=pool_id,
+        month=month,
+        ocr_documents=ocr_docs,
+        non_ocr_documents=non_ocr_docs,
+        total_documents=total_docs,
+        shared_infra_per_document_usd=shared_infra_per_document_usd,
+        ocr_unit_usd=ocr_unit_usd,
+        non_ocr_unit_usd=non_ocr_unit_usd,
+        ocr_unit_zar=ocr_unit_zar,
+        non_ocr_unit_zar=non_ocr_unit_zar,
+        total_billable_zar=total_billable_zar,
+        total_google_cost_zar=total_google_cost_zar,
+        total_margin_zar=total_margin_zar,
+        total_infra_share_zar=total_infra_share_zar,
+    )
+
+
+def calculate_marginal_cost(
+    *,
+    enable_ocr: bool,
+    current_ocr_documents: int,
+    current_non_ocr_documents: int,
+    scope: str,
+    pool_id: str,
+    month: str,
+    context: BillingModelContext,
+) -> tuple[BillingPoolSnapshot, BillingPoolSnapshot, DocumentCostBreakdown]:
+    current_snapshot = calculate_pool_snapshot(
+        scope=scope,
+        pool_id=pool_id,
+        month=month,
+        ocr_documents=current_ocr_documents,
+        non_ocr_documents=current_non_ocr_documents,
+        context=context,
+    )
+    new_ocr = current_snapshot.ocr_documents + (1 if enable_ocr else 0)
+    new_non_ocr = current_snapshot.non_ocr_documents + (0 if enable_ocr else 1)
+    projected_snapshot = calculate_pool_snapshot(
+        scope=scope,
+        pool_id=pool_id,
+        month=month,
+        ocr_documents=new_ocr,
+        non_ocr_documents=new_non_ocr,
+        context=context,
+    )
+    marginal_zar = round(max(0.0, projected_snapshot.total_billable_zar - current_snapshot.total_billable_zar), 6)
+    google_cost_total = round(context.google_usd_per_document * context.usd_to_zar, 6) if enable_ocr else 0.0
+    margin_total = round(context.margin_per_document_usd * context.usd_to_zar, 6)
+    per_doc_tier_usd = projected_snapshot.ocr_unit_usd if enable_ocr else projected_snapshot.non_ocr_unit_usd
+    return current_snapshot, projected_snapshot, DocumentCostBreakdown(
+        documents=1,
+        tier_price_usd=per_doc_tier_usd,
+        google_usd_per_document=context.google_usd_per_document if enable_ocr else 0.0,
+        margin_per_document_usd=context.margin_per_document_usd,
+        infra_share_usd=projected_snapshot.shared_infra_per_document_usd,
+        usd_to_zar=context.usd_to_zar,
+        google_cost_total_zar=google_cost_total,
+        our_margin_amount_zar=margin_total,
+        billable_total_zar=marginal_zar,
+        markup_pct=round((margin_total / google_cost_total) * 100.0, 3) if google_cost_total > 0 else 0.0,
+        current_volume=projected_snapshot.total_documents,
     )
 
 

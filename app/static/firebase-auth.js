@@ -9562,7 +9562,8 @@
             setStatus(`Google sign-in failed: ${e?.message || String(e)}`);
           }
         });
-        $("emailSignInBtn").addEventListener("click", async () => {
+  $("emailSignInForm").addEventListener("submit", async (e) => {
+    e.preventDefault();
           try {
             await signInWithEmailPassword();
             setStatus("");

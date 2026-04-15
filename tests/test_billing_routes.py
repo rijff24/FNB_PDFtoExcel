@@ -11,10 +11,8 @@ def _fake_transparency() -> dict:
         "margin_per_document_usd": 0.05,
         "usd_to_zar": 18.5,
         "infra_monthly_usd": 9.30,
-        "tier_brackets": [
-            {"min_docs": 1, "max_docs": 10, "price_usd": 3.12},
-            {"min_docs": 11, "max_docs": None, "price_usd": 0.81},
-        ],
+        "default_pool_scope": "user",
+        "default_unassigned_pool_behavior": "per_user_fallback",
         "pricing_transparency_line_items": [],
         "notice_non_profit": "n",
     }
@@ -32,8 +30,8 @@ def test_billing_data_returns_summary_when_disabled(monkeypatch) -> None:
     assert response.status_code == 200
     payload = response.json()
     assert payload["billing_enabled"] is False
-    assert payload["pricing_model"] == "per_document_tiered"
-    assert "tier_table" in payload["pricing"]
+    assert payload["pricing_model"] == "pooled_live_finalized_v1"
+    assert "shared_infra_per_document_usd" in payload["pricing"]
     assert "report" in payload
 
 
@@ -73,8 +71,7 @@ def test_billing_page_renders() -> None:
     assert "Billing" in response.text and "Usage" in response.text
     assert "transparencyScopeNote" in response.text
     assert "Calculator assumptions" in response.text
-    assert "tierTable" in response.text
-    assert "How we price each document" in response.text
+    assert "How we price each document (pooled)" in response.text
 
 
 def test_billing_limits_requires_csrf_for_cookie_auth(monkeypatch) -> None:

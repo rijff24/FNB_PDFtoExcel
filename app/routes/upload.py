@@ -1,6 +1,9 @@
 import logging
 import io
 from datetime import datetime, timezone
+from pathlib import Path
+import html
+import re
 
 from fastapi import APIRouter, File, Form, Header, HTTPException, Request, UploadFile
 from fastapi.responses import JSONResponse, Response, StreamingResponse
@@ -10,7 +13,7 @@ from uuid import uuid4
 from app.services.auth import AuthorizedUser
 from app.services.access_control import authenticate_request, authenticate_request_with_mode
 from app.services.banks import get_enabled_bank_profile, list_bank_options
-from app.services.billing import DEFAULT_TIER_BRACKETS, DocumentCostBreakdown, billing_enabled, calculate_document_cost, evaluate_limits, tier_price_usd
+from app.services.billing import billing_enabled, build_billing_context, calculate_marginal_cost, evaluate_limits, month_key
 from app.services.csrf import should_enforce_csrf, validate_double_submit_csrf
 from app.services.admin_store import apply_user_credits, get_billing_pricing_global, get_user_profile
 from app.services.document_ai import extract_text_with_document_ai, process_document_with_layout
@@ -30,7 +33,7 @@ from app.services.quotas import (
     enforce_redis_quotas,
     load_quota_config,
 )
-from app.services.usage_store import get_month_rollup, get_user_billing_settings, record_usage_event
+from app.services.usage_store import get_pool_rollup, get_user_billing_settings, record_usage_event, resolve_billing_pool
 from app.services.preview_store import (
     get_preview_session,
     save_preview_session,
@@ -38,12 +41,109 @@ from app.services.preview_store import (
 )
 
 router = APIRouter()
+DOCS_DIR = Path(__file__).resolve().parents[2] / "docs"
+HELP_DOCS: dict[str, dict[str, str]] = {
+    "how-the-app-works": {"title": "How the App Works", "file": "how-the-app-works.md"},
+    "functionality-overview": {"title": "Functionality Overview", "file": "functionality-overview.md"},
+    "how-to-use-the-app": {"title": "How to Use the App", "file": "how-to-use-the-app.md"},
+    "beta-onboarding": {"title": "Beta Onboarding", "file": "beta-onboarding.md"},
+    "known-limitations": {"title": "Known Limitations", "file": "known-limitations.md"},
+    "billing-transparency": {"title": "Billing Transparency", "file": "billing-transparency.md"},
+    "support-and-escalation": {"title": "Support and Escalation", "file": "support-and-escalation.md"},
+    "incident-and-recovery": {"title": "Incident and Recovery", "file": "incident-and-recovery.md"},
+}
 
 def _authenticate_mutating_request(request: Request, authorization: str | None, path: str) -> AuthorizedUser:
     auth_result = authenticate_request_with_mode(authorization, request=request, path=path)
     if should_enforce_csrf(request, auth_result.auth_mode):
         validate_double_submit_csrf(request)
     return auth_result.user
+
+
+def _render_markdown_safe(md_text: str) -> str:
+    """Render a limited safe subset of markdown to HTML."""
+    lines = md_text.splitlines()
+    html_parts: list[str] = []
+    in_list = False
+    in_code = False
+    code_buffer: list[str] = []
+
+    def close_list() -> None:
+        nonlocal in_list
+        if in_list:
+            html_parts.append("</ul>")
+            in_list = False
+
+    for raw_line in lines:
+        line = raw_line.rstrip("\n")
+        stripped = line.strip()
+
+        if stripped.startswith("```"):
+            if in_code:
+                html_parts.append("<pre><code>" + html.escape("\n".join(code_buffer)) + "</code></pre>")
+                code_buffer = []
+                in_code = False
+            else:
+                close_list()
+                in_code = True
+            continue
+        if in_code:
+            code_buffer.append(line)
+            continue
+
+        if not stripped:
+            close_list()
+            continue
+
+        if stripped.startswith("#"):
+            close_list()
+            level = len(stripped) - len(stripped.lstrip("#"))
+            level = min(max(level, 1), 4)
+            text = stripped[level:].strip()
+            html_parts.append(f"<h{level}>{html.escape(text)}</h{level}>")
+            continue
+
+        if stripped.startswith("- "):
+            if not in_list:
+                html_parts.append("<ul>")
+                in_list = True
+            item = html.escape(stripped[2:].strip())
+            html_parts.append(f"<li>{item}</li>")
+            continue
+
+        close_list()
+        safe = html.escape(stripped)
+        safe = re.sub(r"`([^`]+)`", r"<code>\1</code>", safe)
+        safe = re.sub(r"\[([^\]]+)\]\(([^)]+)\)", r'<a href="\2" target="_blank" rel="noopener">\1</a>', safe)
+        html_parts.append(f"<p>{safe}</p>")
+
+    close_list()
+    if in_code:
+        html_parts.append("<pre><code>" + html.escape("\n".join(code_buffer)) + "</code></pre>")
+    return "\n".join(html_parts)
+
+
+def _load_help_doc(slug: str) -> dict[str, str]:
+    doc = HELP_DOCS.get(slug)
+    if not doc:
+        raise HTTPException(status_code=404, detail="Help document not found.")
+    file_path = DOCS_DIR / doc["file"]
+    if not file_path.exists():
+        raise HTTPException(status_code=404, detail="Help document file missing.")
+    raw = file_path.read_text(encoding="utf-8")
+    return {
+        "slug": slug,
+        "title": doc["title"],
+        "html": _render_markdown_safe(raw),
+    }
+
+
+def _resolve_help_slug(doc: str | None) -> str:
+    default_slug = next(iter(HELP_DOCS.keys()))
+    slug = (doc or default_slug).strip().lower()
+    if slug not in HELP_DOCS:
+        return default_slug
+    return slug
 
 
 def _enforce_ocr_quotas(path: str, user: AuthorizedUser, pdf_bytes: bytes) -> None:
@@ -158,55 +258,34 @@ def _billing_precheck(
         }
 
     pricing = get_billing_pricing_global()
-    g_usd = float(pricing.get("google_usd_per_classified_document", 0.75) or 0.0)
-    m_usd = float(pricing.get("margin_per_document_usd", 0.05) or 0.0)
-    fx = float(pricing.get("usd_to_zar", 18.5) or 0.0)
-    infra = float(pricing.get("infra_monthly_usd", 9.30) or 0.0)
-    brackets = pricing.get("tier_brackets") or DEFAULT_TIER_BRACKETS
-
-    rollup = get_month_rollup(user.uid)
+    model = build_billing_context(pricing)
+    ym = month_key()
+    lock = resolve_billing_pool(user.uid, email=user.email, ym=ym, pricing=pricing)
+    pool_id = str(lock.get("pool_id") or "")
+    scope = str(lock.get("scope") or "user")
+    if not pool_id:
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "code": "billing_org_required",
+                "message": "Organization assignment is required for billing under current policy.",
+            },
+        )
+    pool_rollup = get_pool_rollup(pool_id, ym)
     settings = get_user_billing_settings(user.uid)
-    ocr_docs = int(rollup.get("total_documents", 0) or rollup.get("total_statements", 0) or 0)
-    non_ocr_docs = int(rollup.get("total_non_ocr_documents", 0) or 0)
-    misc_billable = float(rollup.get("total_misc_billable", 0.0) or 0.0)
-    current_vol = ocr_docs + non_ocr_docs
-
-    if current_vol > 0:
-        cur_tp = tier_price_usd(n=current_vol, brackets=brackets)
-        current_total = round(
-            cur_tp * fx * ocr_docs + max(0.0, cur_tp - g_usd) * fx * non_ocr_docs + misc_billable, 6
-        )
-    else:
-        current_total = round(misc_billable, 6)
-
-    new_vol = current_vol + 1
-    new_tp = tier_price_usd(n=new_vol, brackets=brackets)
-    if enable_ocr:
-        proj_ocr, proj_non_ocr = ocr_docs + 1, non_ocr_docs
-    else:
-        proj_ocr, proj_non_ocr = ocr_docs, non_ocr_docs + 1
-    projected_raw = round(
-        new_tp * fx * proj_ocr + max(0.0, new_tp - g_usd) * fx * proj_non_ocr + misc_billable, 6
+    ocr_docs = int(pool_rollup.get("total_documents", 0) or 0)
+    non_ocr_docs = int(pool_rollup.get("total_non_ocr_documents", 0) or 0)
+    current_snapshot, projected_snapshot, cost = calculate_marginal_cost(
+        enable_ocr=enable_ocr,
+        current_ocr_documents=ocr_docs,
+        current_non_ocr_documents=non_ocr_docs,
+        scope=scope,
+        pool_id=pool_id,
+        month=ym,
+        context=model,
     )
-
-    if enable_ocr:
-        cost = calculate_document_cost(
-            document_count=1, current_volume=new_vol,
-            google_usd_per_document=g_usd, margin_per_document_usd=m_usd,
-            usd_to_zar=fx, infra_monthly_usd=infra, brackets=brackets,
-        )
-    else:
-        non_ocr_price = round(max(0.0, new_tp - g_usd), 6)
-        infra_share = round(infra / max(new_vol, 10), 6)
-        cost = DocumentCostBreakdown(
-            documents=1, tier_price_usd=non_ocr_price,
-            google_usd_per_document=0.0, margin_per_document_usd=m_usd,
-            infra_share_usd=infra_share, usd_to_zar=fx,
-            google_cost_total_zar=0.0,
-            our_margin_amount_zar=round(m_usd * fx, 6),
-            billable_total_zar=round(non_ocr_price * fx, 6),
-            markup_pct=0.0, current_volume=new_vol,
-        )
+    current_total = round(current_snapshot.total_billable_zar, 6)
+    projected_raw = round(projected_snapshot.total_billable_zar, 6)
 
     profile = get_user_profile(user.uid, user.email)
     available_credits = float(profile.get("credits_balance", 0.0) or 0.0)
@@ -232,20 +311,22 @@ def _billing_precheck(
                 "status": "blocked",
                 "error_code": "billing_limit_reached",
                 "warning": decision.warning,
-                "google_usd_per_document": g_usd,
-                "margin_per_document_usd": m_usd,
+                "google_usd_per_document": model.google_usd_per_document,
+                "margin_per_document_usd": model.margin_per_document_usd,
                 "tier_price_usd": cost.tier_price_usd,
-                "usd_to_zar": fx,
+                "usd_to_zar": model.usd_to_zar,
+                "billing_scope": scope,
+                "billing_pool_id": pool_id,
+                "locked_org_id_for_month": lock.get("org_id_at_lock"),
+                "pool_month": ym,
                 "google_cost_total": 0,
                 "our_markup_pct": 0,
                 "our_margin_amount": 0,
+                "infra_share_total": 0,
                 "billable_total": 0,
                 "credit_applied": 0,
                 "timestamp": datetime.now(timezone.utc),
             },
-            pricing_brackets=brackets,
-            usd_to_zar=fx,
-            google_usd_per_document=g_usd,
         )
         raise HTTPException(
             status_code=429,
@@ -264,9 +345,14 @@ def _billing_precheck(
         "cost": cost,
         "decision": decision,
         "credit_applied": credit_applied,
-        "pricing_brackets": brackets,
-        "usd_to_zar": fx,
-        "google_usd_per_document": g_usd,
+        "usd_to_zar": model.usd_to_zar,
+        "google_usd_per_document": model.google_usd_per_document,
+        "billing_scope": scope,
+        "billing_pool_id": pool_id,
+        "billing_month": ym,
+        "locked_org_id_for_month": lock.get("org_id_at_lock"),
+        "current_pool_total": current_total,
+        "projected_pool_total": projected_raw,
     }
 
 
@@ -295,9 +381,10 @@ def _record_billing_event(
     net_billable = round(max(0.0, float(cost.billable_total_zar) - credit_applied), 6) if is_billable else 0.0
     if is_billable and credit_applied > 0:
         apply_user_credits(user.uid, credit_applied)
-    brackets = billing_ctx.get("pricing_brackets")
-    fx_rate = float(billing_ctx.get("usd_to_zar", 18.5) or 18.5)
-    g_usd_rate = float(billing_ctx.get("google_usd_per_document", 0.75) or 0.75)
+    billing_scope = str(billing_ctx.get("billing_scope") or "user")
+    billing_pool_id = str(billing_ctx.get("billing_pool_id") or f"user:{user.uid}")
+    billing_month = str(billing_ctx.get("billing_month") or month_key())
+    infra_share_total = round(float(getattr(cost, "infra_share_usd", 0.0) or 0.0) * float(cost.usd_to_zar), 6) if is_billable else 0.0
     record_usage_event(
         {
             "uid": user.uid,
@@ -318,13 +405,15 @@ def _record_billing_event(
             "google_cost_total": cost.google_cost_total_zar if is_billable else 0,
             "our_markup_pct": cost.markup_pct if is_billable else 0,
             "our_margin_amount": cost.our_margin_amount_zar if is_billable else 0,
+            "infra_share_total": infra_share_total,
             "credit_applied": credit_applied if is_billable else 0,
             "billable_total": net_billable,
+            "billing_scope": billing_scope,
+            "billing_pool_id": billing_pool_id,
+            "pool_month": billing_month,
+            "locked_org_id_for_month": billing_ctx.get("locked_org_id_for_month"),
             "timestamp": datetime.now(timezone.utc),
         },
-        pricing_brackets=brackets,
-        usd_to_zar=fx_rate,
-        google_usd_per_document=g_usd_rate,
     )
 
 
@@ -338,6 +427,39 @@ async def index(request: Request):
         {
             "request": request,
             "bank_options": list_bank_options(),
+        },
+    )
+
+
+@router.get("/help")
+async def help_page(request: Request, doc: str | None = None, authorization: str | None = Header(default=None)):
+    user = authenticate_request(authorization, request=request, path="/help")
+    templates = request.app.state.templates
+    slug = _resolve_help_slug(doc)
+    selected = _load_help_doc(slug)
+    docs_nav = [{"slug": k, "title": v["title"]} for k, v in HELP_DOCS.items()]
+    return templates.TemplateResponse(
+        request,
+        "help.html",
+        {
+            "request": request,
+            "user_email": user.email,
+            "docs_nav": docs_nav,
+            "selected_doc": selected,
+        },
+    )
+
+
+@router.get("/help/data")
+async def help_data(request: Request, doc: str | None = None, authorization: str | None = Header(default=None)) -> JSONResponse:
+    _ = authenticate_request(authorization, request=request, path="/help/data")
+    slug = _resolve_help_slug(doc)
+    selected = _load_help_doc(slug)
+    docs_nav = [{"slug": key, "title": meta["title"]} for key, meta in HELP_DOCS.items()]
+    return JSONResponse(
+        {
+            "selected_doc": selected,
+            "docs_nav": docs_nav,
         },
     )
 

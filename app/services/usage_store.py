@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 from typing import Any
 from uuid import uuid4
 
-from app.services.billing import BillingSettings, DEFAULT_TIER_BRACKETS, as_settings_doc, default_billing_settings, month_key, tier_price_usd
+from app.services.billing import BillingSettings, as_settings_doc, default_billing_settings, month_key
 
 
 def _collection(name: str, default: str) -> str:
@@ -14,6 +14,8 @@ def _collection(name: str, default: str) -> str:
 USAGE_EVENTS_COLLECTION = _collection("BILLING_USAGE_COLLECTION", "usage_events")
 BILLING_SETTINGS_COLLECTION = _collection("BILLING_SETTINGS_COLLECTION", "billing_settings")
 BILLING_ROLLUPS_COLLECTION = _collection("BILLING_ROLLUPS_COLLECTION", "billing_rollups")
+POOL_ROLLUPS_COLLECTION = _collection("BILLING_POOL_ROLLUPS_COLLECTION", "billing_pool_rollups")
+MEMBERSHIP_LOCK_COLLECTION = _collection("BILLING_MEMBERSHIP_LOCK_COLLECTION", "billing_membership_locks")
 USERS_COLLECTION = _collection("ADMIN_USERS_COLLECTION", "users_profile")
 
 
@@ -33,6 +35,10 @@ def _client():
 
 def _rollup_id(uid: str, ym: str) -> str:
     return f"{uid}_{ym}"
+
+
+def _pool_rollup_id(pool_id: str, ym: str) -> str:
+    return f"{pool_id}_{ym}"
 
 
 def get_user_billing_settings(uid: str) -> BillingSettings:
@@ -76,9 +82,12 @@ def get_month_rollup(uid: str, ym: str | None = None) -> dict[str, Any]:
             "total_misc_billable": 0.0,
             "total_google_cost": 0.0,
             "total_margin": 0.0,
+            "total_infra_share": 0.0,
             "event_count": 0,
             "warning_count": 0,
             "blocked_count": 0,
+            "billing_scope": "user",
+            "billing_pool_id": f"user:{uid}",
         }
     data = snap.to_dict() or {}
     data.setdefault("uid", uid)
@@ -87,15 +96,96 @@ def get_month_rollup(uid: str, ym: str | None = None) -> dict[str, Any]:
     data.setdefault("total_non_ocr_documents", 0)
     data.setdefault("total_statements", 0)
     data.setdefault("total_misc_billable", 0.0)
+    data.setdefault("total_infra_share", 0.0)
+    data.setdefault("billing_scope", "user")
+    data.setdefault("billing_pool_id", f"user:{uid}")
     return data
+
+
+def get_pool_rollup(pool_id: str, ym: str | None = None) -> dict[str, Any]:
+    key = ym or month_key()
+    client = _client()
+    ref = client.collection(POOL_ROLLUPS_COLLECTION).document(_pool_rollup_id(pool_id, key))
+    snap = ref.get()
+    if not snap.exists:
+        return {
+            "pool_id": pool_id,
+            "month": key,
+            "total_documents": 0,
+            "total_non_ocr_documents": 0,
+            "total_billable": 0.0,
+            "total_google_cost": 0.0,
+            "total_margin": 0.0,
+            "total_infra_share": 0.0,
+            "event_count": 0,
+            "warning_count": 0,
+            "blocked_count": 0,
+            "scope": "user",
+            "is_finalized": False,
+        }
+    data = snap.to_dict() or {}
+    data.setdefault("pool_id", pool_id)
+    data.setdefault("month", key)
+    data.setdefault("total_documents", 0)
+    data.setdefault("total_non_ocr_documents", 0)
+    data.setdefault("total_infra_share", 0.0)
+    data.setdefault("scope", "user")
+    data.setdefault("is_finalized", False)
+    return data
+
+
+def resolve_billing_pool(uid: str, *, email: str | None = None, ym: str | None = None, pricing: dict[str, Any] | None = None) -> dict[str, Any]:
+    key = ym or month_key()
+    client = _client()
+    profile_ref = client.collection(USERS_COLLECTION).document(uid)
+    profile_snap = profile_ref.get()
+    profile = profile_snap.to_dict() if profile_snap.exists else {"uid": uid, "email": email or "", "org_id": None}
+    defaults = pricing or {}
+    default_scope = str(defaults.get("default_pool_scope", "user") or "user").strip().lower()
+    default_scope = default_scope if default_scope in {"user", "organization"} else "user"
+    default_unassigned = str(defaults.get("default_unassigned_pool_behavior", "per_user_fallback") or "per_user_fallback").strip().lower()
+    if default_unassigned not in {"per_user_fallback", "global_unassigned_pool", "block_unassigned"}:
+        default_unassigned = "per_user_fallback"
+    desired_scope = str(profile.get("billing_scope") or default_scope).strip().lower()
+    if desired_scope not in {"user", "organization"}:
+        desired_scope = "user"
+    unassigned_behavior = str(profile.get("billing_unassigned_behavior") or default_unassigned).strip().lower()
+    if unassigned_behavior not in {"per_user_fallback", "global_unassigned_pool", "block_unassigned"}:
+        unassigned_behavior = "per_user_fallback"
+    lock_id = f"{uid}_{key}"
+    lock_ref = client.collection(MEMBERSHIP_LOCK_COLLECTION).document(lock_id)
+    lock_snap = lock_ref.get()
+    if lock_snap.exists:
+        return lock_snap.to_dict() or {}
+    org_id = str(profile.get("org_id") or "").strip()
+    scope = desired_scope
+    pool_id = f"user:{uid}"
+    if desired_scope == "organization":
+        if org_id:
+            pool_id = f"org:{org_id}"
+        elif unassigned_behavior == "global_unassigned_pool":
+            pool_id = "org:unassigned"
+        elif unassigned_behavior == "block_unassigned":
+            pool_id = ""
+        else:
+            scope = "user"
+            pool_id = f"user:{uid}"
+    lock_doc = {
+        "uid": uid,
+        "month": key,
+        "scope": scope,
+        "pool_id": pool_id,
+        "org_id_at_lock": org_id or None,
+        "desired_scope": desired_scope,
+        "unassigned_behavior": unassigned_behavior,
+        "created_at": datetime.now(timezone.utc),
+    }
+    lock_ref.set(lock_doc, merge=True)
+    return lock_doc
 
 
 def record_usage_event(
     event: dict[str, Any],
-    *,
-    pricing_brackets: list[dict[str, Any]] | None = None,
-    usd_to_zar: float | None = None,
-    google_usd_per_document: float | None = None,
 ) -> None:
     client = _client()
     now = datetime.now(timezone.utc)
@@ -110,13 +200,8 @@ def record_usage_event(
 
     rollup_ref = client.collection(BILLING_ROLLUPS_COLLECTION).document(_rollup_id(uid, ym))
     event_ref = client.collection(USAGE_EVENTS_COLLECTION).document(event_id)
-
-    brackets = pricing_brackets or DEFAULT_TIER_BRACKETS
-    fx = float(usd_to_zar if usd_to_zar is not None else event_doc.get("usd_to_zar", 18.5) or 18.5)
-    g_usd = float(
-        google_usd_per_document if google_usd_per_document is not None
-        else event_doc.get("google_usd_per_document", 0.75) or 0.75
-    )
+    pool_id = str(event_doc.get("billing_pool_id") or f"user:{uid}")
+    pool_ref = client.collection(POOL_ROLLUPS_COLLECTION).document(_pool_rollup_id(pool_id, ym))
 
     from google.cloud import firestore as firestore_mod
 
@@ -124,6 +209,8 @@ def record_usage_event(
     def _tx(transaction) -> None:
         rollup_snap = rollup_ref.get(transaction=transaction)
         existing = rollup_snap.to_dict() if rollup_snap.exists else {}
+        pool_snap = pool_ref.get(transaction=transaction)
+        pool_existing = pool_snap.to_dict() if pool_snap.exists else {}
 
         total_pages = int(existing.get("total_pages", 0)) + int(event_doc.get("page_count", 0) or 0)
         docs_billed = int(event_doc.get("documents_billed", 0) or event_doc.get("statements_billed", 0) or 0)
@@ -135,6 +222,7 @@ def record_usage_event(
             event_doc.get("google_cost_total", 0.0) or 0.0
         )
         total_margin = float(existing.get("total_margin", 0.0)) + float(event_doc.get("our_margin_amount", 0.0) or 0.0)
+        total_infra_share = float(existing.get("total_infra_share", 0.0)) + float(event_doc.get("infra_share_total", 0.0) or 0.0)
         event_count = int(existing.get("event_count", 0)) + 1
         warning_count = int(existing.get("warning_count", 0)) + (1 if event_doc.get("warning") else 0)
         blocked_count = int(existing.get("blocked_count", 0)) + (1 if event_doc.get("status") == "blocked" else 0)
@@ -144,16 +232,17 @@ def record_usage_event(
         if docs_billed == 0 and non_ocr_billed == 0 and ev_billable > 0:
             misc_billable = round(misc_billable + ev_billable, 6)
 
-        total_volume = total_documents + total_non_ocr_documents
-        if total_volume > 0:
-            tp = tier_price_usd(n=total_volume, brackets=brackets)
-            ocr_billable = round(tp * fx * total_documents, 6)
-            non_ocr_price = max(0.0, tp - g_usd)
-            non_ocr_billable = round(non_ocr_price * fx * total_non_ocr_documents, 6)
-        else:
-            ocr_billable = 0.0
-            non_ocr_billable = 0.0
-        total_billable = round(ocr_billable + non_ocr_billable + misc_billable, 6)
+        total_billable = round(float(existing.get("total_billable", 0.0)) + ev_billable, 6)
+
+        pool_docs = int(pool_existing.get("total_documents", 0) or 0) + docs_billed
+        pool_non_ocr = int(pool_existing.get("total_non_ocr_documents", 0) or 0) + non_ocr_billed
+        pool_billable = round(float(pool_existing.get("total_billable", 0.0)) + ev_billable, 6)
+        pool_google = round(float(pool_existing.get("total_google_cost", 0.0)) + float(event_doc.get("google_cost_total", 0.0) or 0.0), 6)
+        pool_margin = round(float(pool_existing.get("total_margin", 0.0)) + float(event_doc.get("our_margin_amount", 0.0) or 0.0), 6)
+        pool_infra = round(float(pool_existing.get("total_infra_share", 0.0)) + float(event_doc.get("infra_share_total", 0.0) or 0.0), 6)
+        pool_event_count = int(pool_existing.get("event_count", 0)) + 1
+        pool_warning_count = int(pool_existing.get("warning_count", 0)) + (1 if event_doc.get("warning") else 0)
+        pool_blocked_count = int(pool_existing.get("blocked_count", 0)) + (1 if event_doc.get("status") == "blocked" else 0)
 
         transaction.set(event_ref, event_doc)
         transaction.set(
@@ -169,9 +258,32 @@ def record_usage_event(
                 "total_misc_billable": misc_billable,
                 "total_google_cost": round(total_google_cost, 6),
                 "total_margin": round(total_margin, 6),
+                "total_infra_share": round(total_infra_share, 6),
                 "event_count": event_count,
                 "warning_count": warning_count,
                 "blocked_count": blocked_count,
+                "billing_scope": str(event_doc.get("billing_scope") or "user"),
+                "billing_pool_id": pool_id,
+                "updated_at": now,
+            },
+            merge=True,
+        )
+        transaction.set(
+            pool_ref,
+            {
+                "pool_id": pool_id,
+                "month": ym,
+                "scope": str(event_doc.get("billing_scope") or "user"),
+                "total_documents": pool_docs,
+                "total_non_ocr_documents": pool_non_ocr,
+                "total_billable": pool_billable,
+                "total_google_cost": pool_google,
+                "total_margin": pool_margin,
+                "total_infra_share": pool_infra,
+                "event_count": pool_event_count,
+                "warning_count": pool_warning_count,
+                "blocked_count": pool_blocked_count,
+                "is_finalized": bool(pool_existing.get("is_finalized", False)),
                 "updated_at": now,
             },
             merge=True,
@@ -187,6 +299,7 @@ def get_billing_report(uid: str, ym: str | None = None) -> dict[str, Any]:
     key = ym or month_key()
     client = _client()
     rollup = get_month_rollup(uid, key)
+    pool_rollup = get_pool_rollup(str(rollup.get("billing_pool_id") or f"user:{uid}"), key)
 
     query = (
         client.collection(USAGE_EVENTS_COLLECTION)
@@ -224,6 +337,7 @@ def get_billing_report(uid: str, ym: str | None = None) -> dict[str, Any]:
     return {
         "month": key,
         "rollup": rollup,
+        "pool_rollup": pool_rollup,
         "daily_breakdown": daily_breakdown,
         "recent_events": events[:50],
     }
@@ -290,4 +404,71 @@ def get_admin_usage_summary(ym: str | None = None, limit: int = 2000) -> dict[st
         "totals": totals,
         "by_user": by_user,
         "by_org": list(by_org.values()),
+    }
+
+
+def backfill_pool_rollups(ym: str | None = None, *, limit: int = 5000) -> dict[str, Any]:
+    """
+    Rebuild pool rollups from user rollups for a month.
+    Useful during migration where pool rollups may be missing.
+    """
+    from google.cloud.firestore_v1.base_query import FieldFilter
+
+    key = ym or month_key()
+    client = _client()
+    query = (
+        client.collection(BILLING_ROLLUPS_COLLECTION)
+        .where(filter=FieldFilter("month", "==", key))
+        .limit(max(1, limit))
+    )
+    buckets: dict[str, dict[str, Any]] = {}
+    user_rows = 0
+    for snap in query.stream():
+        row = snap.to_dict() or {}
+        uid = str(row.get("uid") or "").strip()
+        if not uid:
+            continue
+        user_rows += 1
+        pool_id = str(row.get("billing_pool_id") or f"user:{uid}")
+        scope = str(row.get("billing_scope") or ("organization" if pool_id.startswith("org:") else "user"))
+        b = buckets.setdefault(
+            pool_id,
+            {
+                "pool_id": pool_id,
+                "month": key,
+                "scope": scope,
+                "total_documents": 0,
+                "total_non_ocr_documents": 0,
+                "total_billable": 0.0,
+                "total_google_cost": 0.0,
+                "total_margin": 0.0,
+                "total_infra_share": 0.0,
+                "event_count": 0,
+                "warning_count": 0,
+                "blocked_count": 0,
+                "is_finalized": False,
+            },
+        )
+        b["total_documents"] += int(row.get("total_documents", 0) or row.get("total_statements", 0) or 0)
+        b["total_non_ocr_documents"] += int(row.get("total_non_ocr_documents", 0) or 0)
+        b["total_billable"] = round(float(b["total_billable"]) + float(row.get("total_billable", 0.0) or 0.0), 6)
+        b["total_google_cost"] = round(float(b["total_google_cost"]) + float(row.get("total_google_cost", 0.0) or 0.0), 6)
+        b["total_margin"] = round(float(b["total_margin"]) + float(row.get("total_margin", 0.0) or 0.0), 6)
+        b["total_infra_share"] = round(float(b["total_infra_share"]) + float(row.get("total_infra_share", 0.0) or 0.0), 6)
+        b["event_count"] += int(row.get("event_count", 0) or 0)
+        b["warning_count"] += int(row.get("warning_count", 0) or 0)
+        b["blocked_count"] += int(row.get("blocked_count", 0) or 0)
+
+    now = datetime.now(timezone.utc)
+    written = 0
+    for pool_id, payload in buckets.items():
+        payload["updated_at"] = now
+        payload["backfilled_at"] = now
+        client.collection(POOL_ROLLUPS_COLLECTION).document(_pool_rollup_id(pool_id, key)).set(payload, merge=True)
+        written += 1
+    return {
+        "month": key,
+        "user_rollups_scanned": user_rows,
+        "pool_rollups_written": written,
+        "pool_ids": sorted(buckets.keys()),
     }

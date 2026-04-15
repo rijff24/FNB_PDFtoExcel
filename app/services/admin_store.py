@@ -14,6 +14,7 @@ USERS_COLLECTION = _collection("ADMIN_USERS_COLLECTION", "users_profile")
 REQUESTS_COLLECTION = _collection("ADMIN_SIGNUP_REQUESTS_COLLECTION", "signup_requests")
 ORGS_COLLECTION = _collection("ADMIN_ORGS_COLLECTION", "organizations")
 BILLING_PRICING_COLLECTION = _collection("BILLING_PRICING_COLLECTION", "billing_pricing")
+BILLING_FINALIZED_COLLECTION = _collection("BILLING_FINALIZED_COLLECTION", "billing_finalized_months")
 AUDIT_COLLECTION = _collection("ADMIN_AUDIT_COLLECTION", "admin_audit_events")
 ERRORS_COLLECTION = _collection("ADMIN_ERRORS_COLLECTION", "app_errors")
 USAGE_EVENTS_COLLECTION = _collection("BILLING_USAGE_COLLECTION", "usage_events")
@@ -149,6 +150,8 @@ def _default_billing_pricing_global() -> dict[str, Any]:
         "usd_to_zar": 18.5,
         "bill_currency": "ZAR",
         "infra_monthly_usd": 9.30,
+        "default_pool_scope": "user",
+        "default_unassigned_pool_behavior": "per_user_fallback",
         "tier_brackets": [
             {"min_docs": 1,    "max_docs": 5,    "price_usd": 3.12},
             {"min_docs": 6,    "max_docs": 10,   "price_usd": 2.35},
@@ -382,6 +385,8 @@ def set_billing_pricing_global(updates: dict[str, Any]) -> dict[str, Any]:
         "notice_accuracy",
         "processor_limits_note",
         "transparency_estimate_scope_note",
+        "default_pool_scope",
+        "default_unassigned_pool_behavior",
     }
     payload: dict[str, Any] = {"updated_at": utcnow()}
     for k, v in updates.items():
@@ -395,6 +400,12 @@ def set_billing_pricing_global(updates: dict[str, Any]) -> dict[str, Any]:
             payload[k] = float(v)
         elif k == "bill_currency":
             payload[k] = str(v).strip()[:8] or "ZAR"
+        elif k == "default_pool_scope":
+            val = str(v or "").strip().lower()
+            payload[k] = val if val in {"user", "organization"} else "user"
+        elif k == "default_unassigned_pool_behavior":
+            val = str(v or "").strip().lower()
+            payload[k] = val if val in {"per_user_fallback", "global_unassigned_pool", "block_unassigned"} else "per_user_fallback"
         elif isinstance(v, str):
             payload[k] = v
         else:
@@ -402,6 +413,34 @@ def set_billing_pricing_global(updates: dict[str, Any]) -> dict[str, Any]:
     client = _client()
     client.collection(BILLING_PRICING_COLLECTION).document("global").set(payload, merge=True)
     return get_billing_pricing_global()
+
+
+def get_user_billing_policy(uid: str) -> dict[str, Any]:
+    profile = get_user_profile(uid)
+    scope = str(profile.get("billing_scope") or "").strip().lower()
+    if scope not in {"user", "organization"}:
+        scope = ""
+    return {
+        "uid": uid,
+        "org_id": profile.get("org_id"),
+        "billing_scope": scope or None,
+        "billing_unassigned_behavior": str(profile.get("billing_unassigned_behavior") or "").strip().lower() or None,
+    }
+
+
+def set_user_billing_policy(uid: str, *, billing_scope: str | None = None, billing_unassigned_behavior: str | None = None) -> dict[str, Any]:
+    payload: dict[str, Any] = {"updated_at": utcnow()}
+    if billing_scope is not None:
+        normalized = str(billing_scope).strip().lower()
+        payload["billing_scope"] = normalized if normalized in {"user", "organization"} else "user"
+    if billing_unassigned_behavior is not None:
+        normalized = str(billing_unassigned_behavior).strip().lower()
+        payload["billing_unassigned_behavior"] = (
+            normalized if normalized in {"per_user_fallback", "global_unassigned_pool", "block_unassigned"} else "per_user_fallback"
+        )
+    client = _client()
+    client.collection(USERS_COLLECTION).document(uid).set(payload, merge=True)
+    return get_user_billing_policy(uid)
 
 
 def create_organization(name: str, domains: list[str] | None = None) -> dict[str, Any]:

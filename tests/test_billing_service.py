@@ -1,5 +1,8 @@
 from app.services.billing import (
     BillingSettings,
+    BillingModelContext,
+    calculate_marginal_cost,
+    calculate_pool_snapshot,
     DEFAULT_TIER_BRACKETS,
     DocumentCostBreakdown,
     calculate_document_cost,
@@ -77,3 +80,43 @@ def test_evaluate_limits_warn_then_block() -> None:
     block = evaluate_limits(settings=settings, current_total=95.0, projected_total=101.0)
     assert block.blocked is True
     assert block.limit_remaining == 0.0
+
+
+def test_pool_snapshot_separates_ocr_and_non_ocr() -> None:
+    context = BillingModelContext(
+        google_usd_per_document=0.75,
+        margin_per_document_usd=0.05,
+        infra_monthly_usd=9.30,
+        usd_to_zar=18.5,
+    )
+    snap = calculate_pool_snapshot(
+        scope="organization",
+        pool_id="org:o1",
+        month="202604",
+        ocr_documents=8,
+        non_ocr_documents=2,
+        context=context,
+    )
+    assert snap.total_documents == 10
+    assert snap.ocr_unit_usd > snap.non_ocr_unit_usd
+    assert snap.total_billable_zar > 0
+
+
+def test_marginal_cost_is_positive_for_next_doc() -> None:
+    context = BillingModelContext(
+        google_usd_per_document=0.75,
+        margin_per_document_usd=0.05,
+        infra_monthly_usd=9.30,
+        usd_to_zar=18.5,
+    )
+    current, projected, cost = calculate_marginal_cost(
+        enable_ocr=True,
+        current_ocr_documents=50,
+        current_non_ocr_documents=20,
+        scope="organization",
+        pool_id="org:o2",
+        month="202604",
+        context=context,
+    )
+    assert projected.total_billable_zar >= current.total_billable_zar
+    assert cost.billable_total_zar >= 0

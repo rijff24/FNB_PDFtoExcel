@@ -9,11 +9,12 @@ from fastapi.encoders import jsonable_encoder
 from fastapi.responses import JSONResponse
 
 from app.services.access_control import authenticate_request, authenticate_request_with_mode
-from app.services.billing import billing_enabled, default_billing_settings, generate_tier_table, tier_price_usd
+from app.services.billing import billing_enabled, build_billing_context, calculate_pool_snapshot, default_billing_settings, month_key
+from app.services.billing_finalize import get_finalized_statement
 from app.services.csrf import should_enforce_csrf, validate_double_submit_csrf
 from app.services.logging_utils import log_event
 from app.services.response_cache import get_cached, invalidate_prefix, set_cached
-from app.services.usage_store import get_billing_report, get_user_billing_settings, update_user_billing_settings
+from app.services.usage_store import get_billing_report, get_pool_rollup, get_user_billing_settings, resolve_billing_pool, update_user_billing_settings
 from app.services.admin_store import get_billing_pricing_global
 
 router = APIRouter()
@@ -37,34 +38,53 @@ def _app_limits_for_transparency() -> dict[str, Any]:
     return out
 
 
-def _build_pricing_block(transparency: dict[str, Any], total_documents: int, total_billable: float) -> dict[str, Any]:
-    """Build the pricing section of the billing data response."""
-    g_usd = float(transparency.get("google_usd_per_classified_document", 0.75) or 0.0)
-    m_usd = float(transparency.get("margin_per_document_usd", 0.05) or 0.0)
-    fx = float(transparency.get("usd_to_zar", 18.5) or 0.0)
-    infra = float(transparency.get("infra_monthly_usd", 9.30) or 0.0)
-    brackets = transparency.get("tier_brackets") or None
-
-    table = generate_tier_table(brackets=brackets, usd_to_zar=fx)
-
-    vol = max(1, total_documents) if total_documents > 0 else 1
-    current_price_usd = tier_price_usd(n=vol, brackets=brackets)
-    effective_per_doc = round(current_price_usd * fx, 6) if total_documents > 0 else 0.0
-
-    non_ocr_price_usd = round(max(0.0, current_price_usd - g_usd), 6)
+def _build_pricing_block(transparency: dict[str, Any], pool_rollup: dict[str, Any], pool_id: str, scope: str, ym: str) -> dict[str, Any]:
+    model = build_billing_context(transparency)
+    ocr_docs = int(pool_rollup.get("total_documents", 0) or 0)
+    non_ocr_docs = int(pool_rollup.get("total_non_ocr_documents", 0) or 0)
+    live = calculate_pool_snapshot(
+        scope=scope,
+        pool_id=pool_id,
+        month=ym,
+        ocr_documents=ocr_docs,
+        non_ocr_documents=non_ocr_docs,
+        context=model,
+    )
+    finalized = get_finalized_statement(pool_id, ym)
     return {
-        "google_usd_per_document": g_usd,
-        "margin_per_document_usd": m_usd,
-        "usd_to_zar": fx,
-        "infra_monthly_usd": infra,
-        "current_volume": total_documents,
-        "current_tier_price_usd": current_price_usd,
-        "current_tier_price_zar": round(current_price_usd * fx, 2),
-        "non_ocr_tier_price_usd": non_ocr_price_usd,
-        "non_ocr_tier_price_zar": round(non_ocr_price_usd * fx, 2),
-        "effective_per_document_zar": effective_per_doc,
-        "tier_table": table,
+        "google_usd_per_document": model.google_usd_per_document,
+        "margin_per_document_usd": model.margin_per_document_usd,
+        "usd_to_zar": model.usd_to_zar,
+        "infra_monthly_usd": model.infra_monthly_usd,
+        "scope": scope,
+        "pool_id": pool_id,
+        "current_volume": live.total_documents,
+        "shared_infra_per_document_usd": live.shared_infra_per_document_usd,
+        "ocr_unit_usd": live.ocr_unit_usd,
+        "non_ocr_unit_usd": live.non_ocr_unit_usd,
+        "ocr_unit_zar": live.ocr_unit_zar,
+        "non_ocr_unit_zar": live.non_ocr_unit_zar,
+        "live_total_billable_zar": live.total_billable_zar,
+        "mode": "finalized" if finalized else "live",
+        "finalized": finalized,
+        "pricing_model_version": "pooled_live_finalized_v1",
     }
+
+
+def _pool_rollup_with_fallback(pool_rollup: dict[str, Any], user_rollup: dict[str, Any]) -> dict[str, Any]:
+    """
+    Keep billing display consistent during migration:
+    if pool rollup has no usage yet but user rollup does, reuse user counts.
+    """
+    out = dict(pool_rollup or {})
+    pool_total_docs = int(out.get("total_documents", 0) or 0) + int(out.get("total_non_ocr_documents", 0) or 0)
+    user_ocr_docs = int(user_rollup.get("total_documents", 0) or user_rollup.get("total_statements", 0) or 0)
+    user_non_ocr_docs = int(user_rollup.get("total_non_ocr_documents", 0) or 0)
+    user_total_docs = user_ocr_docs + user_non_ocr_docs
+    if pool_total_docs == 0 and user_total_docs > 0:
+        out["total_documents"] = user_ocr_docs
+        out["total_non_ocr_documents"] = user_non_ocr_docs
+    return out
 
 
 @router.get("/billing")
@@ -86,7 +106,8 @@ async def billing_data(request: Request, authorization: str | None = Header(defa
 
     if not billing_enabled():
         defaults = default_billing_settings()
-        pricing = _build_pricing_block(transparency, total_documents=0, total_billable=0.0)
+        ym = month_key()
+        pricing = _build_pricing_block(transparency, pool_rollup={}, pool_id=f"user:{user.uid}", scope="user", ym=ym)
         payload = {
             "billing_enabled": False,
             "settings": {
@@ -106,7 +127,7 @@ async def billing_data(request: Request, authorization: str | None = Header(defa
                 "daily_breakdown": [],
                 "recent_events": [],
             },
-            "pricing_model": "per_document_tiered",
+            "pricing_model": "pooled_live_finalized_v1",
             "pricing": pricing,
             "transparency": transparency,
             "app_limits": _app_limits_for_transparency(),
@@ -118,44 +139,20 @@ async def billing_data(request: Request, authorization: str | None = Header(defa
     settings = get_user_billing_settings(user.uid)
     report = get_billing_report(user.uid)
     rollup = report.get("rollup", {})
-    ocr_docs = int(rollup.get("total_documents", 0) or rollup.get("total_statements", 0) or 0)
-    non_ocr_docs = int(rollup.get("total_non_ocr_documents", 0) or 0)
-    misc_billable = float(rollup.get("total_misc_billable", 0.0) or 0.0)
+    ym = report.get("month") or month_key()
+    lock = resolve_billing_pool(user.uid, email=user.email, ym=ym, pricing=transparency)
+    scope = str(lock.get("scope") or rollup.get("billing_scope") or "user")
+    pool_id = str(lock.get("pool_id") or rollup.get("billing_pool_id") or f"user:{user.uid}")
+    pool_rollup_raw = get_pool_rollup(pool_id, ym)
+    pool_rollup = _pool_rollup_with_fallback(pool_rollup_raw, rollup)
+    rollup["total_billable"] = round(float(rollup.get("total_billable", 0.0) or 0.0), 6)
 
-    g_usd = float(transparency.get("google_usd_per_classified_document", 0.75) or 0.0)
-    fx = float(transparency.get("usd_to_zar", 18.5) or 0.0)
-    brackets = transparency.get("tier_brackets") or None
-    total_volume = ocr_docs + non_ocr_docs
-    if total_volume > 0:
-        tp = tier_price_usd(n=total_volume, brackets=brackets)
-        ocr_billable = round(tp * fx * ocr_docs, 6)
-        non_ocr_billable = round(max(0.0, tp - g_usd) * fx * non_ocr_docs, 6)
-    else:
-        ocr_billable = 0.0
-        non_ocr_billable = 0.0
-    total_billable = round(ocr_billable + non_ocr_billable + misc_billable, 6)
-    rollup["total_billable"] = total_billable
-
-    events = report.get("recent_events", [])
-    if total_volume > 0:
-        ocr_per_doc_zar = round(tp * fx, 6)
-        non_ocr_per_doc_zar = round(max(0.0, tp - g_usd) * fx, 6)
-        for ev in events:
-            d = int(ev.get("documents_billed", 0) or 0)
-            nd = int(ev.get("non_ocr_documents_billed", 0) or 0)
-            if d > 0:
-                ev["billable_total"] = round(ocr_per_doc_zar * d, 6)
-            elif nd > 0:
-                ev["billable_total"] = round(non_ocr_per_doc_zar * nd, 6)
-            elif ev.get("status") == "blocked":
-                ev["billable_total"] = 0
-
-    pricing = _build_pricing_block(transparency, total_documents=total_volume, total_billable=total_billable)
+    pricing = _build_pricing_block(transparency, pool_rollup=pool_rollup, pool_id=pool_id, scope=scope, ym=ym)
 
     payload = {
         "billing_enabled": True,
         "currency": "ZAR",
-        "pricing_model": "per_document_tiered",
+        "pricing_model": "pooled_live_finalized_v1",
         "settings": {
             "monthly_limit_amount": settings.monthly_limit_amount,
             "warn_pct": settings.warn_pct,
@@ -165,6 +162,7 @@ async def billing_data(request: Request, authorization: str | None = Header(defa
         "transparency": transparency,
         "app_limits": _app_limits_for_transparency(),
         "report": report,
+        "pool_rollup": pool_rollup,
     }
     set_cached(cache_key, payload, ttl_seconds=20)
     log_event(logging.INFO, "billing_data_latency", path="/billing/data", extra={"elapsed_ms": round((time.perf_counter() - started) * 1000, 2)})

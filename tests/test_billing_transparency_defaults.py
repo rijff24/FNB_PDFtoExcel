@@ -22,3 +22,9 @@ def test_default_billing_pricing_has_tier_brackets() -> None:
     assert "google_usd_per_classified_document" in d
     assert "margin_per_document_usd" in d
     assert "infra_monthly_usd" in d
+    assert d.get("default_pool_scope") in {"user", "organization"}
+    assert d.get("default_unassigned_pool_behavior") in {
+        "per_user_fallback",
+        "global_unassigned_pool",
+        "block_unassigned",
+    }

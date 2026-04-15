@@ -14,6 +14,12 @@ This folder contains the full technical documentation for the **Bank Statement T
 | [Frontend](frontend.md) | Browser-side auth, esbuild bundling, and review UI |
 | [Development](development.md) | Local development setup, environment variables, testing |
 | [Deployment](deployment.md) | Cloud Run deployment, GCP setup, and production config |
+| [Beta Onboarding](beta-onboarding.md) | Tester quickstart and first-run checklist |
+| [Known Limitations](known-limitations.md) | Current product limits and workarounds |
+| [Support and Escalation](support-and-escalation.md) | Severity levels, response expectations, escalation path |
+| [Incident and Recovery](incident-and-recovery.md) | Incident lifecycle and recovery checklist |
+| [Billing Transparency](billing-transparency.md) | Pooled billing explanation and user-visible totals |
+| [Operations Runbook](operations-runbook.md) | Day-2 operations, smoke checks, rollback guidance |
 
 ## Quick Links
 

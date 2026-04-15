@@ -18,7 +18,9 @@ from app.services.admin_store import (
     get_admin_usage_report,
     get_billing_pricing_global,
     get_signup_request,
+    get_user_billing_policy,
     grant_user_credits,
+    set_user_billing_policy,
     list_app_errors,
     list_organizations,
     list_signup_requests,
@@ -28,10 +30,13 @@ from app.services.admin_store import (
     set_user_status,
     update_organization,
 )
+from app.services.billing import month_key
+from app.services.billing_finalize import finalize_pool_month
+from app.services.usage_store import resolve_billing_pool
 from app.services.firebase_auth_admin import create_or_get_user_by_email, generate_password_setup_link
 from app.services.cost_reconciliation import get_reconciliation_history, run_reconciliation
 from app.services.response_cache import get_cached, invalidate_prefix, set_cached
-from app.services.usage_store import get_admin_usage_summary
+from app.services.usage_store import backfill_pool_rollups, get_admin_usage_summary
 from app.services.logging_utils import log_event
 
 router = APIRouter()
@@ -405,6 +410,63 @@ async def admin_assign_org(
     assign_user_to_org(uid, str(org_id).strip() if org_id else None)
     invalidate_prefix("admin:")
     return JSONResponse({"ok": True})
+
+
+@router.put("/admin/users/{uid}/billing-policy")
+async def admin_set_user_billing_policy(
+    uid: str,
+    request: Request,
+    payload: dict[str, Any],
+    authorization: str | None = Header(default=None),
+) -> JSONResponse:
+    _ = _authenticate_admin_mutation(request, authorization, "/admin/users/{uid}/billing-policy")
+    policy = set_user_billing_policy(
+        uid,
+        billing_scope=payload.get("billing_scope"),
+        billing_unassigned_behavior=payload.get("billing_unassigned_behavior"),
+    )
+    invalidate_prefix("admin:")
+    invalidate_prefix("billing:data:")
+    return JSONResponse({"ok": True, "policy": policy})
+
+
+@router.post("/admin/billing/finalize")
+async def admin_finalize_pool_month(
+    request: Request,
+    payload: dict[str, Any],
+    authorization: str | None = Header(default=None),
+) -> JSONResponse:
+    admin_user = _authenticate_admin_mutation(request, authorization, "/admin/billing/finalize")
+    month = str(payload.get("month") or month_key()).strip()
+    pool_id = str(payload.get("pool_id") or "").strip()
+    uid = str(payload.get("uid") or "").strip()
+    if not pool_id:
+        if not uid:
+            raise HTTPException(status_code=400, detail="pool_id or uid is required")
+        pricing = get_billing_pricing_global()
+        lock = resolve_billing_pool(uid, ym=month, pricing=pricing)
+        pool_id = str(lock.get("pool_id") or "")
+    if not pool_id:
+        raise HTTPException(status_code=400, detail="Could not resolve billing pool")
+    result = finalize_pool_month(pool_id=pool_id, ym=month, actor_uid=admin_user.uid)
+    invalidate_prefix("billing:data:")
+    invalidate_prefix("admin:")
+    return JSONResponse(jsonable_encoder({"ok": True, "finalized": result}))
+
+
+@router.post("/admin/billing/backfill-pools")
+async def admin_backfill_pool_rollups(
+    request: Request,
+    payload: dict[str, Any],
+    authorization: str | None = Header(default=None),
+) -> JSONResponse:
+    _ = _authenticate_admin_mutation(request, authorization, "/admin/billing/backfill-pools")
+    month = str(payload.get("month") or month_key()).strip()
+    limit = int(payload.get("limit") or 5000)
+    result = backfill_pool_rollups(month, limit=max(1, min(limit, 50000)))
+    invalidate_prefix("billing:data:")
+    invalidate_prefix("admin:")
+    return JSONResponse(jsonable_encoder({"ok": True, "result": result}))
 
 
 @router.post("/admin/requests/{request_id}/approve")

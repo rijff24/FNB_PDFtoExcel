@@ -243,6 +243,15 @@
             color: #1e293b;
         }
 
+        .table-toolbar button:focus-visible,
+        .table-toolbar .tb-icon-btn:focus-visible,
+        .tb-text-btn:focus-visible,
+        .tb-seg-option:focus-visible,
+        .review-toggle-btn:focus-visible {
+            outline: 3px solid #93c5fd;
+            outline-offset: 2px;
+        }
+
         .table-toolbar button:disabled,
         .table-toolbar .tb-icon-btn:disabled {
             opacity: 0.3;
@@ -299,6 +308,7 @@
         }
 
         .tb-seg-option {
+            all: unset;
             padding: 3px 8px;
             font-size: 0.65rem;
             font-weight: 500;
@@ -376,7 +386,8 @@
             text-align: center;
         }
 
-        .review-checkbox {
+        .review-toggle-btn {
+            all: unset;
             display: inline-flex;
             align-items: center;
             justify-content: center;
@@ -389,18 +400,18 @@
             cursor: pointer;
         }
 
-        .review-checkbox.review-blank {
+        .review-toggle-btn.review-blank {
             background: #ffffff;
             color: #6b7280;
         }
 
-        .review-checkbox.review-needs {
+        .review-toggle-btn.review-needs {
             background: #fef3c7;
             border-color: #f97316;
             color: #f97316;
         }
 
-        .review-checkbox.review-done {
+        .review-toggle-btn.review-done {
             background: #ecfdf3;
             border-color: #22c55e;
             color: #16a34a;
@@ -573,7 +584,7 @@
             </p>
         </div>
         <div>
-            <a href="/" class="link">&larr; Back to upload</a>
+            <a href="/" class="link">&larr; Back to upload</a> | <a href="/help" class="link">Help center</a>
         </div>
     </div>
 
@@ -635,9 +646,9 @@
                     <span class="tb-divider"></span>
                     <span class="tb-label">Scroll</span>
                     <div class="tb-segment" id="scrollModeSegment">
-                        <span class="tb-seg-option active" data-mode="auto">Auto</span>
-                        <span class="tb-seg-option" data-mode="synced">Sync</span>
-                        <span class="tb-seg-option" data-mode="none">None</span>
+                        <button type="button" class="tb-seg-option active" data-mode="auto" aria-pressed="true">Auto</button>
+                        <button type="button" class="tb-seg-option" data-mode="synced" aria-pressed="false">Sync</button>
+                        <button type="button" class="tb-seg-option" data-mode="none" aria-pressed="false">None</button>
                     </div>
                     <span class="tb-divider"></span>
                     <div class="tb-zoom-group">
@@ -1284,6 +1295,7 @@
 
             transactions.forEach(function (tx, index) {
                 var tr = document.createElement("tr");
+                tr.tabIndex = 0;
                 var reviewState = getReviewState(tx);
                 tx.review_state = reviewState;
                 if (reviewState === "needs") {
@@ -1320,8 +1332,10 @@
                 reviewTd.dataset.rowIndex = String(index);
                 reviewTd.dataset.field = "review_state";
 
-                var checkbox = document.createElement("span");
-                checkbox.className = "review-checkbox";
+                var checkbox = document.createElement("button");
+                checkbox.type = "button";
+                checkbox.className = "review-toggle-btn";
+                checkbox.setAttribute("aria-label", "Toggle review state for row " + (index + 1));
                 if (reviewState === "needs") {
                     checkbox.classList.add("review-needs");
                     checkbox.textContent = "!";
@@ -1396,6 +1410,16 @@
                     if (highlightEnabled) {
                         cancelClear();
                         drawHighlight(rowBbox, pageIndex);
+                    }
+                });
+                tr.addEventListener("keydown", function (e) {
+                    if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        handleRowSelection(index, e);
+                        if (highlightEnabled) {
+                            cancelClear();
+                            drawHighlight(rowBbox, pageIndex);
+                        }
                     }
                 });
 
@@ -1696,6 +1720,7 @@
                                 var opts = seg.querySelectorAll(".tb-seg-option");
                                 opts.forEach(function (o) {
                                     o.classList.toggle("active", o.dataset.mode === "synced");
+                                    o.setAttribute("aria-pressed", o.dataset.mode === "synced" ? "true" : "false");
                                 });
                             }
                         }
@@ -1711,6 +1736,7 @@
                         segOptions.forEach(function (o) { o.classList.remove("active"); });
                         opt.classList.add("active");
                         scrollMode = opt.dataset.mode;
+                        segOptions.forEach(function (o) { o.setAttribute("aria-pressed", o === opt ? "true" : "false"); });
                     });
                 });
             }

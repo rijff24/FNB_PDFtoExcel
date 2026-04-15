@@ -10,6 +10,14 @@ Production-ready v1 web service that converts South African bank statement PDFs 
 - Interactive review page: edit cells, select/insert/delete rows, toggle PDF highlighting, synchronized vertical/horizontal scrolling, and calibrated PDF/table sync zoom
 - Exports a clean `.xlsx` with bank-specific column headers
 
+## For beta client testers
+
+- Start here: [`docs/beta-onboarding.md`](docs/beta-onboarding.md)
+- Known limits/workarounds: [`docs/known-limitations.md`](docs/known-limitations.md)
+- Billing explanation: [`docs/billing-transparency.md`](docs/billing-transparency.md)
+- Support/escalation process: [`docs/support-and-escalation.md`](docs/support-and-escalation.md)
+- Incident and recovery communication: [`docs/incident-and-recovery.md`](docs/incident-and-recovery.md)
+
 ## Core architecture (v1)
 
 ```mermaid

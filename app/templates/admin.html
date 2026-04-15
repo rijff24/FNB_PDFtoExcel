@@ -13,8 +13,8 @@
     <p><a href="/">Back to home</a></p>
 
     <section class="card">
-        <h2>Per-document tiered billing &amp; transparency</h2>
-        <p class="status">Charges are per <strong>classified document</strong>. Price decreases as monthly volume increases. OCR documents are billed at the full tier price. Non-OCR documents are billed at the tier price minus the Google Document AI charge (since Document AI is not used). Both count toward monthly volume for tier determination.</p>
+        <h2>Pooled billing &amp; transparency</h2>
+        <p class="status">Charges are pooled per month with live repricing and month-end finalization. OCR documents include Document AI variable cost, while all documents share infrastructure and margin.</p>
         <form id="billingPricingForm" class="auth-block">
             <label for="bpGoogleUsd">Google USD per classified document</label>
             <input id="bpGoogleUsd" type="number" step="0.0001" min="0" required />
@@ -24,14 +24,17 @@
             <input id="bpUsdToZar" type="number" step="0.0001" min="0" required />
             <label for="bpInfraUsd">Monthly infrastructure cost (USD, e.g. 9.30 &mdash; shown in transparency)</label>
             <input id="bpInfraUsd" type="number" step="0.01" min="0" required />
-            <h3>Volume tier brackets</h3>
-            <p class="status" style="font-size:0.9rem;">
-                Each bracket: <code>{"min_docs": N, "max_docs": N|null, "price_usd": X.XX}</code>.
-                Use <code>null</code> for <code>max_docs</code> on the last bracket (1001+).
-                Price is the all-in per-document charge in USD for that volume range.
-            </p>
-            <label for="bpTierBracketsJson">Tier brackets (JSON array)</label>
-            <textarea id="bpTierBracketsJson" rows="14" style="font-family:monospace;font-size:0.85rem;"></textarea>
+            <label for="bpDefaultScope">Default billing scope</label>
+            <select id="bpDefaultScope">
+                <option value="user">Per user pool</option>
+                <option value="organization">Per organization pool</option>
+            </select>
+            <label for="bpUnassignedBehavior">Unassigned-org behavior when scope=organization</label>
+            <select id="bpUnassignedBehavior">
+                <option value="per_user_fallback">Fallback to per-user pool</option>
+                <option value="global_unassigned_pool">Use shared unassigned pool</option>
+                <option value="block_unassigned">Block until org assigned</option>
+            </select>
             <label for="bpEffectiveDate">Prices as of (ISO date)</label>
             <input id="bpEffectiveDate" type="text" placeholder="2026-04-10" />
             <label for="bpTransparencyScopeNote">Platform estimate scope note (shown above the platform cost table on the billing page)</label>
@@ -70,6 +73,26 @@
             <a href="/admin/export?kind=events" id="exportEvents" target="_blank">Download events CSV</a>
         </div>
         <p id="usageSummary" class="status"></p>
+    </section>
+
+    <section class="card">
+        <h2>Month-End Finalization</h2>
+        <form id="finalizeForm" class="auth-block">
+            <label for="finalizeMonth">Month (YYYYMM)</label>
+            <input id="finalizeMonth" type="text" placeholder="202604" />
+            <label for="finalizeUid">User UID (optional)</label>
+            <input id="finalizeUid" type="text" placeholder="user uid" />
+            <label for="finalizePoolId">Pool ID (optional; overrides UID)</label>
+            <input id="finalizePoolId" type="text" placeholder="org:abc or user:uid" />
+            <button type="submit">Finalize month</button>
+            <p id="finalizeStatus" class="status"></p>
+        </form>
+        <form id="backfillPoolsForm" class="auth-block" style="margin-top:12px;">
+            <label for="backfillMonth">Backfill month (YYYYMM)</label>
+            <input id="backfillMonth" type="text" placeholder="202604" />
+            <button type="submit">Backfill pool rollups</button>
+            <p id="backfillStatus" class="status"></p>
+        </form>
     </section>
 
     <section class="card">
@@ -120,6 +143,7 @@
 
     <section class="card">
         <h2>Users</h2>
+        <p id="userActionStatus" class="status">Use the action toolbar to manage user status, credits, org, and billing scope.</p>
         <div style="overflow:auto;">
             <table class="billing-table">
                 <thead>
@@ -129,6 +153,37 @@
             </table>
         </div>
     </section>
+
+    <div id="userActionModal" class="modal-overlay" style="display:none;" role="dialog" aria-modal="true" aria-labelledby="userActionModalTitle">
+        <div class="modal-card">
+            <h3 id="userActionModalTitle">Update user</h3>
+            <p id="userActionModalSubtitle" class="status"></p>
+            <form id="userActionForm" class="auth-block">
+                <div id="userActionCreditFields" style="display:none;">
+                    <label for="userActionCreditAmount">Credit amount (use negative to remove)</label>
+                    <input id="userActionCreditAmount" type="number" step="0.01" />
+                    <label for="userActionCreditReason">Reason (optional)</label>
+                    <input id="userActionCreditReason" type="text" placeholder="manual_adjustment" />
+                </div>
+                <div id="userActionOrgFields" style="display:none;">
+                    <label for="userActionOrgSelect">Organization</label>
+                    <select id="userActionOrgSelect"></select>
+                </div>
+                <div id="userActionScopeFields" style="display:none;">
+                    <label for="userActionScopeSelect">Billing scope</label>
+                    <select id="userActionScopeSelect">
+                        <option value="user">User-based</option>
+                        <option value="organization">Organization-based</option>
+                    </select>
+                </div>
+                <p id="userActionModalStatus" class="status"></p>
+                <div class="button-row">
+                    <button type="submit" id="userActionConfirmBtn">Save</button>
+                    <button type="button" id="userActionCancelBtn" class="button-secondary">Cancel</button>
+                </div>
+            </form>
+        </div>
+    </div>
 
     <section class="card">
         <h2>Error Tracking</h2>
@@ -159,6 +214,26 @@
         const reconVarMtd = document.getElementById("reconVarMtd");
         const reconVarPctMtd = document.getElementById("reconVarPctMtd");
         const reconBody = document.getElementById("reconBody");
+        const finalizeStatus = document.getElementById("finalizeStatus");
+        const backfillStatus = document.getElementById("backfillStatus");
+        const userActionStatus = document.getElementById("userActionStatus");
+        const userActionModal = document.getElementById("userActionModal");
+        const userActionForm = document.getElementById("userActionForm");
+        const userActionModalTitle = document.getElementById("userActionModalTitle");
+        const userActionModalSubtitle = document.getElementById("userActionModalSubtitle");
+        const userActionModalStatus = document.getElementById("userActionModalStatus");
+        const userActionConfirmBtn = document.getElementById("userActionConfirmBtn");
+        const userActionCancelBtn = document.getElementById("userActionCancelBtn");
+        const userActionCreditFields = document.getElementById("userActionCreditFields");
+        const userActionOrgFields = document.getElementById("userActionOrgFields");
+        const userActionScopeFields = document.getElementById("userActionScopeFields");
+        const userActionCreditAmount = document.getElementById("userActionCreditAmount");
+        const userActionCreditReason = document.getElementById("userActionCreditReason");
+        const userActionOrgSelect = document.getElementById("userActionOrgSelect");
+        const userActionScopeSelect = document.getElementById("userActionScopeSelect");
+        let organizations = [];
+        let activeUserAction = null;
+        let userActionModalOpener = null;
 
         function getCookie(name) {
             const target = name + "=";
@@ -194,11 +269,24 @@
         async function callJson(url, method, body) {
             const isMutation = (method || "GET").toUpperCase() !== "GET";
             const fetcher = isMutation ? authFetchWithCsrf : authFetch;
-            const resp = await fetcher(url, {
-                method: method || "GET",
-                headers: body ? { "Content-Type": "application/json" } : undefined,
-                body: body ? JSON.stringify(body) : undefined,
-            });
+            const controller = new AbortController();
+            const timeoutId = setTimeout(function () { controller.abort(); }, 20000);
+            let resp;
+            try {
+                resp = await fetcher(url, {
+                    method: method || "GET",
+                    headers: body ? { "Content-Type": "application/json" } : undefined,
+                    body: body ? JSON.stringify(body) : undefined,
+                    signal: controller.signal,
+                });
+            } catch (err) {
+                if (err && err.name === "AbortError") {
+                    throw new Error("Request timed out. Please try again.");
+                }
+                throw err;
+            } finally {
+                clearTimeout(timeoutId);
+            }
             if (!resp.ok) {
                 if (resp.status === 401 || resp.status === 403) {
                     window.location.href = "/";
@@ -245,6 +333,79 @@
             sessionStorage.removeItem(ADMIN_CACHE_KEY);
         }
 
+        function setButtonsBusy(container, busy) {
+            const buttons = container.querySelectorAll("button[data-action][data-uid]");
+            buttons.forEach(function (btn) {
+                btn.disabled = !!busy || btn.dataset.staticDisabled === "true";
+            });
+        }
+
+        function setModalFieldsVisibility(kind) {
+            userActionCreditFields.style.display = kind === "credit" ? "" : "none";
+            userActionOrgFields.style.display = kind === "assign-org" ? "" : "none";
+            userActionScopeFields.style.display = kind === "set-billing-scope" ? "" : "none";
+        }
+
+        function openUserActionModal(action, user, opener) {
+            activeUserAction = { action: action, user: user };
+            userActionModalOpener = opener || document.activeElement;
+            userActionModalTitle.textContent = action === "credit" ? "Adjust credits" : action === "assign-org" ? "Assign organization" : "Set billing scope";
+            userActionModalSubtitle.textContent = (user.email || user.uid) + " (" + user.uid + ")";
+            userActionModalStatus.textContent = "";
+            setModalFieldsVisibility(action);
+            if (action === "credit") {
+                userActionCreditAmount.value = "50";
+                userActionCreditReason.value = "manual_adjustment";
+            } else if (action === "assign-org") {
+                userActionOrgSelect.innerHTML = "<option value=''>Unassigned</option>";
+                organizations.forEach(function (org) {
+                    const opt = document.createElement("option");
+                    opt.value = String(org.org_id || "");
+                    opt.textContent = String(org.name || org.org_id || "");
+                    if ((user.org_id || "") === opt.value) opt.selected = true;
+                    userActionOrgSelect.appendChild(opt);
+                });
+            } else if (action === "set-billing-scope") {
+                userActionScopeSelect.value = (user.billing_scope || "user");
+            }
+            userActionModal.style.display = "flex";
+            document.body.style.overflow = "hidden";
+            const focusTarget = action === "credit" ? userActionCreditAmount : action === "assign-org" ? userActionOrgSelect : userActionScopeSelect;
+            setTimeout(function () { focusTarget.focus(); }, 0);
+        }
+
+        function closeUserActionModal() {
+            userActionModal.style.display = "none";
+            activeUserAction = null;
+            userActionConfirmBtn.disabled = false;
+            document.body.style.overflow = "";
+            if (userActionModalOpener && typeof userActionModalOpener.focus === "function") {
+                userActionModalOpener.focus();
+            }
+            userActionModalOpener = null;
+        }
+
+        function handleUserActionModalKeydown(e) {
+            if (e.key === "Escape") {
+                e.preventDefault();
+                closeUserActionModal();
+                userActionStatus.textContent = "Action cancelled.";
+                return;
+            }
+            if (e.key !== "Tab") return;
+            const focusable = userActionModal.querySelectorAll("button, input, select, textarea, [tabindex]:not([tabindex='-1'])");
+            if (!focusable.length) return;
+            const first = focusable[0];
+            const last = focusable[focusable.length - 1];
+            if (e.shiftKey && document.activeElement === first) {
+                e.preventDefault();
+                last.focus();
+            } else if (!e.shiftKey && document.activeElement === last) {
+                e.preventDefault();
+                first.focus();
+            }
+        }
+
         function renderReconciliation(recon) {
             const summary = (recon || {}).summary || {};
             reconAppMtd.textContent = formatRand(summary.app_estimate_mtd || 0);
@@ -282,28 +443,37 @@
         }
 
         function addUserRow(user) {
+            const status = String(user.status || "active").toLowerCase();
+            const approveDisabled = status === "active";
+            const revokeDisabled = status === "revoked";
             const tr = document.createElement("tr");
             tr.innerHTML =
                 "<td>" + (user.email || user.uid) + "</td>" +
                 "<td>" + (user.status || "active") + "</td>" +
                 "<td>" + Number(user.credits_balance || 0).toFixed(2) + "</td>" +
-                "<td>" + (user.org_id || "unassigned") + "</td>" +
+                "<td>" + (user.org_id || "unassigned") + "<br><small>scope: " + (user.billing_scope || "default") + "</small></td>" +
                 "<td>" +
-                "<button data-action='approve' data-uid='" + user.uid + "'>Approve</button> " +
-                "<button data-action='revoke' data-uid='" + user.uid + "'>Revoke</button> " +
-                "<button data-action='credit' data-uid='" + user.uid + "'>+Credit</button> " +
-                "<button data-action='assign-org' data-uid='" + user.uid + "'>Assign org</button>" +
+                "<div class='user-action-toolbar' data-uid='" + user.uid + "' data-email='" + (user.email || user.uid) + "' data-org-id='" + (user.org_id || "") + "' data-billing-scope='" + (user.billing_scope || "") + "'>" +
+                "<button type='button' class='user-action-btn icon-only' aria-label='Approve user " + (user.email || user.uid) + "' title='Approve user' data-action='approve' data-uid='" + user.uid + "'" + (approveDisabled ? " disabled data-static-disabled='true'" : "") + "><span class='user-action-icon'>&#10003;</span></button>" +
+                "<button type='button' class='user-action-btn icon-only' aria-label='Revoke user " + (user.email || user.uid) + "' title='Revoke user' data-action='revoke' data-uid='" + user.uid + "'" + (revokeDisabled ? " disabled data-static-disabled='true'" : "") + "><span class='user-action-icon'>&#10005;</span></button>" +
+                "<button type='button' class='user-action-btn' title='Grant trial credit' data-action='credit' data-uid='" + user.uid + "'><span class='user-action-icon'>+</span><span>Credit</span></button>" +
+                "<button type='button' class='user-action-btn' title='Assign organization' data-action='assign-org' data-uid='" + user.uid + "'><span class='user-action-icon'>ORG</span><span>Org</span></button>" +
+                "<button type='button' class='user-action-btn' title='Set billing scope' data-action='set-billing-scope' data-uid='" + user.uid + "'><span class='user-action-icon'>S</span><span>Scope</span></button>" +
+                "</div>" +
+                "<p class='status row-action-status' data-row-status='" + user.uid + "'></p>" +
                 "</td>";
             usersBody.appendChild(tr);
         }
 
         function applyData(data) {
             const bp = data.billing_pricing || {};
+            organizations = data.organizations || [];
             document.getElementById("bpGoogleUsd").value = Number(bp.google_usd_per_classified_document ?? 0.75);
             document.getElementById("bpMarginUsd").value = Number(bp.margin_per_document_usd ?? 0.05);
             document.getElementById("bpUsdToZar").value = Number(bp.usd_to_zar ?? 18.5);
             document.getElementById("bpInfraUsd").value = Number(bp.infra_monthly_usd ?? 9.30);
-            document.getElementById("bpTierBracketsJson").value = JSON.stringify(bp.tier_brackets || [], null, 2);
+            document.getElementById("bpDefaultScope").value = bp.default_pool_scope || "user";
+            document.getElementById("bpUnassignedBehavior").value = bp.default_unassigned_pool_behavior || "per_user_fallback";
             document.getElementById("bpEffectiveDate").value = bp.pricing_transparency_effective_date || "";
             document.getElementById("bpTransparencyScopeNote").value = bp.transparency_estimate_scope_note || "";
             document.getElementById("bpProcessorNote").value = bp.processor_limits_note || "";
@@ -387,15 +557,13 @@
                 return;
             }
             try {
-                var bracketsRaw = document.getElementById("bpTierBracketsJson").value || "[]";
-                var parsedBrackets;
-                try { parsedBrackets = JSON.parse(bracketsRaw); } catch (_e) { alert("Invalid JSON in tier brackets"); return; }
                 await callJson("/admin/billing-pricing", "PUT", {
                     google_usd_per_classified_document: Number(document.getElementById("bpGoogleUsd").value || 0),
                     margin_per_document_usd: Number(document.getElementById("bpMarginUsd").value || 0),
                     usd_to_zar: Number(document.getElementById("bpUsdToZar").value || 0),
                     infra_monthly_usd: Number(document.getElementById("bpInfraUsd").value || 0),
-                    tier_brackets: parsedBrackets,
+                    default_pool_scope: document.getElementById("bpDefaultScope").value || "user",
+                    default_unassigned_pool_behavior: document.getElementById("bpUnassignedBehavior").value || "per_user_fallback",
                     pricing_transparency_effective_date: (document.getElementById("bpEffectiveDate").value || "").trim(),
                     transparency_estimate_scope_note: document.getElementById("bpTransparencyScopeNote").value || "",
                     processor_limits_note: document.getElementById("bpProcessorNote").value || "",
@@ -434,21 +602,46 @@
         });
 
         usersBody.addEventListener("click", async function (e) {
-            const action = e.target.getAttribute("data-action");
-            const uid = e.target.getAttribute("data-uid");
+            const button = e.target.closest("button[data-action][data-uid]");
+            if (!button || !usersBody.contains(button)) return;
+            const action = button.getAttribute("data-action");
+            const uid = button.getAttribute("data-uid");
             if (!action || !uid) return;
-            if (action === "approve") {
-                await callJson("/admin/users/" + encodeURIComponent(uid) + "/status", "PUT", { status: "active" });
-            } else if (action === "revoke") {
-                await callJson("/admin/users/" + encodeURIComponent(uid) + "/status", "PUT", { status: "revoked" });
-            } else if (action === "credit") {
-                await callJson("/admin/users/" + encodeURIComponent(uid) + "/credits", "PUT", { amount: 50, reason: "trial_credit" });
-            } else if (action === "assign-org") {
-                const orgId = prompt("Enter organization id (blank to unassign):") || "";
-                await callJson("/admin/users/" + encodeURIComponent(uid) + "/org", "PUT", { org_id: orgId || null });
+            const row = button.closest("tr");
+            const rowStatus = row ? row.querySelector("[data-row-status]") : null;
+            userActionStatus.textContent = "Applying action...";
+            if (rowStatus) rowStatus.textContent = "Applying...";
+            if (action === "credit" || action === "assign-org" || action === "set-billing-scope") {
+                const toolbar = button.closest(".user-action-toolbar");
+                const user = {
+                    uid: uid,
+                    email: (toolbar && toolbar.getAttribute("data-email")) || uid,
+                    status: row ? (row.children[1] ? row.children[1].textContent : "active") : "active",
+                    org_id: (toolbar && toolbar.getAttribute("data-org-id")) || "",
+                    billing_scope: (toolbar && toolbar.getAttribute("data-billing-scope")) || "user",
+                };
+                if (rowStatus) rowStatus.textContent = "";
+                userActionStatus.textContent = "Awaiting input...";
+                openUserActionModal(action, user, button);
+                return;
             }
-            clearAdminCache();
-            await loadData();
+            try {
+                setButtonsBusy(row || usersBody, true);
+                if (action === "approve") {
+                    await callJson("/admin/users/" + encodeURIComponent(uid) + "/status", "PUT", { status: "active" });
+                } else if (action === "revoke") {
+                    await callJson("/admin/users/" + encodeURIComponent(uid) + "/status", "PUT", { status: "revoked" });
+                }
+                clearAdminCache();
+                await loadData();
+                userActionStatus.textContent = "User action applied.";
+                if (rowStatus) rowStatus.textContent = "Saved.";
+            } catch (err) {
+                userActionStatus.textContent = "User action failed: " + (err && err.message ? err.message : "Unknown error");
+                if (rowStatus) rowStatus.textContent = "Failed.";
+            } finally {
+                setButtonsBusy(row || usersBody, false);
+            }
         });
 
         requestsBody.addEventListener("click", async function (e) {
@@ -504,6 +697,89 @@
                 renderReconciliation(result);
             } catch (_err) {
                 reconAlert.textContent = "Reconciliation run failed. Check configuration.";
+            }
+        });
+
+        document.getElementById("finalizeForm").addEventListener("submit", async function (e) {
+            e.preventDefault();
+            finalizeStatus.textContent = "Finalizing...";
+            try {
+                await callJson("/admin/billing/finalize", "POST", {
+                    month: (document.getElementById("finalizeMonth").value || "").trim(),
+                    uid: (document.getElementById("finalizeUid").value || "").trim(),
+                    pool_id: (document.getElementById("finalizePoolId").value || "").trim(),
+                });
+                clearAdminCache();
+                finalizeStatus.textContent = "Finalized.";
+            } catch (_err) {
+                finalizeStatus.textContent = "Finalization failed.";
+            }
+        });
+
+        document.getElementById("backfillPoolsForm").addEventListener("submit", async function (e) {
+            e.preventDefault();
+            backfillStatus.textContent = "Backfilling...";
+            try {
+                const resp = await callJson("/admin/billing/backfill-pools", "POST", {
+                    month: (document.getElementById("backfillMonth").value || "").trim(),
+                });
+                const result = (resp && resp.result) || {};
+                backfillStatus.textContent =
+                    "Done. Pools written: " + Number(result.pool_rollups_written || 0) +
+                    ", user rollups scanned: " + Number(result.user_rollups_scanned || 0) + ".";
+                clearAdminCache();
+            } catch (_err) {
+                backfillStatus.textContent = "Backfill failed.";
+            }
+        });
+
+        userActionCancelBtn.addEventListener("click", function () {
+            closeUserActionModal();
+            userActionStatus.textContent = "Action cancelled.";
+        });
+
+        userActionModal.addEventListener("click", function (e) {
+            if (e.target === userActionModal) closeUserActionModal();
+        });
+        userActionModal.addEventListener("keydown", handleUserActionModalKeydown);
+
+        userActionForm.addEventListener("submit", async function (e) {
+            e.preventDefault();
+            if (!activeUserAction) return;
+            const action = activeUserAction.action;
+            const uid = activeUserAction.user.uid;
+            userActionConfirmBtn.disabled = true;
+            userActionModalStatus.textContent = "Applying...";
+            try {
+                if (action === "credit") {
+                    const amount = Number(userActionCreditAmount.value || 0);
+                    if (!Number.isFinite(amount) || amount === 0) {
+                        throw new Error("Credit amount must be a non-zero number.");
+                    }
+                    await callJson("/admin/users/" + encodeURIComponent(uid) + "/credits", "PUT", {
+                        amount: amount,
+                        reason: (userActionCreditReason.value || "").trim() || "manual_adjustment",
+                    });
+                } else if (action === "assign-org") {
+                    const orgId = (userActionOrgSelect.value || "").trim();
+                    await callJson("/admin/users/" + encodeURIComponent(uid) + "/org", "PUT", {
+                        org_id: orgId || null,
+                    });
+                } else if (action === "set-billing-scope") {
+                    const scope = (userActionScopeSelect.value || "user").trim();
+                    await callJson("/admin/users/" + encodeURIComponent(uid) + "/billing-policy", "PUT", {
+                        billing_scope: scope,
+                    });
+                }
+                clearAdminCache();
+                await loadData();
+                userActionStatus.textContent = "User action applied.";
+                closeUserActionModal();
+            } catch (err) {
+                const msg = (err && err.message) ? err.message : "Unknown error";
+                userActionModalStatus.textContent = "Failed: " + msg;
+                userActionStatus.textContent = "User action failed: " + msg;
+                userActionConfirmBtn.disabled = false;
             }
         });
 
