@@ -2,7 +2,9 @@
 
 ## Overview
 
-Bank Statement To Excel is a **FastAPI** web application that accepts South African bank statement PDFs (FNB, Capitec Business, Capitec Personal, Standard Bank, and more), extracts transaction data using either local text extraction (pdfplumber) or cloud OCR (Google Document AI), and exports structured results as `.xlsx` files. A browser-based review UI allows users to visually inspect, edit, and manage parsed transactions against the original PDF.
+Bank Statement To Excel is a **FastAPI** web application that accepts supported South African bank statement PDFs, extracts transaction data using either local PDF layout extraction or cloud OCR (Google Document AI), opens a browser review workspace, and exports reviewed results as `.xlsx` files.
+
+The current browser UI is server-rendered Jinja plus vanilla JavaScript. Future UI work should follow [UI Audit](ui-audit.md) and [UI Design Contract](ui-design-contract.md).
 
 ## High-Level Component Diagram
 
@@ -17,13 +19,13 @@ Bank Statement To Excel is a **FastAPI** web application that accepts South Afri
 │  └──────┬──────┘   └──────┬───────┘   └────────────┬────────────┘   │
 │         │                 │                         │               │
 └─────────┼─────────────────┼─────────────────────────┼───────────────┘
-          │  POST /extract  │  Bearer token           │  GET /preview/*
+          │  POST /extract/preview │ Cookie or Bearer auth │ GET /preview/*
           ▼                 ▼                         ▼
 ┌─────────────────────────────────────────────────────────────────────┐
 │                     FastAPI Backend (app/)                           │
 │                                                                     │
 │  ┌──────────────────────────────────────────────────────────────┐   │
-│  │  Routes (app/routes/upload.py)                               │   │
+│  │  Routes (app/routes/*.py)                                    │   │
 │  │  ┌──────────┐  ┌────────────────┐  ┌────────────────────┐   │   │
 │  │  │ GET /    │  │ POST /extract  │  │ POST /extract/     │   │   │
 │  │  │ (index)  │  │ (download xlsx)│  │      preview       │   │   │
@@ -31,8 +33,8 @@ Bank Statement To Excel is a **FastAPI** web application that accepts South Afri
 │  │                         │                    │               │   │
 │  │  ┌──────────────────┐   │  ┌─────────────────┘               │   │
 │  │  │ GET /review      │   │  │  ┌───────────────────────────┐  │   │
-│  │  │ GET /preview/    │   │  │  │ In-memory session store   │  │   │
-│  │  │   data/{id}      │   │  │  │ (PREVIEW_SESSIONS dict)   │  │   │
+│  │  │ GET /preview/    │   │  │  │ preview_store.py          │  │   │
+│  │  │   data/{id}      │   │  │  │ Redis or local fallback   │  │   │
 │  │  │ GET /preview/    │   │  │  └───────────────────────────┘  │   │
 │  │  │   pdf/{id}       │   │  │                                 │   │
 │  │  └──────────────────┘   │  │                                 │   │
@@ -82,7 +84,8 @@ FNB_PDFtoExcel/
 │   │   ├── index.html           # Upload / sign-in page
 │   │   └── review.html          # PDF viewer + parsed transactions table
 │   ├── static/
-│   │   ├── style.css            # Shared CSS
+│   │   ├── style.css            # Shared Swan-style app CSS
+│   │   ├── review.css           # Review workspace CSS
 │   │   └── firebase-auth.js     # Bundled Firebase Auth (from frontend/auth.js)
 │   └── utils/
 │       ├── __init__.py
@@ -102,11 +105,11 @@ FNB_PDFtoExcel/
 
 ## Data Flow
 
-### Direct Download Flow (`POST /extract`)
+### Legacy Direct Download Flow (`POST /extract`)
 
 1. User signs in via Firebase Authentication in the browser.
-2. User uploads a PDF and clicks "Download Excel".
-3. Browser sends `POST /extract` with the PDF file and `Authorization: Bearer <token>`.
+2. API clients may still call `POST /extract` directly with a PDF file, bank id, OCR flag, and auth header/cookie.
+3. The browser upload UI no longer uses this as the primary path; it routes users through preview and review first.
 4. Backend verifies the Firebase ID token and checks the email allowlist.
 5. If OCR is enabled: sends PDF bytes to Google Document AI, receives full `Document` object, passes to `parse_transactions_from_text`.
 6. If OCR is disabled: uses `pdfplumber` to extract text locally, passes to `parse_transactions_from_text`.
@@ -120,7 +123,7 @@ FNB_PDFtoExcel/
 2. Browser sends `POST /extract/preview` with the PDF and OCR flag.
 3. Backend calls `process_document_with_layout` to get the full Document AI `Document` (with bounding boxes).
 4. `parse_transactions_from_document` uses the visual-row parser to extract transactions with per-field bounding boxes.
-5. Backend stores the PDF bytes and parsed transactions in `PREVIEW_SESSIONS` (in-memory dict keyed by session ID).
+5. Backend stores the PDF bytes and parsed transactions through `app/services/preview_store.py`, using Redis when `REDIS_URL` is configured and a process-local fallback otherwise.
 6. Browser redirects to `/review?session_id=<id>`.
 7. Review page loads PDF via `GET /preview/pdf/{id}` and renders with PDF.js.
 8. Review page loads transactions via `GET /preview/data/{id}` and renders in a table.
@@ -133,6 +136,7 @@ FNB_PDFtoExcel/
 - **Multi-line transaction merging**: Continuation lines (no leading date) are automatically merged into the previous transaction, supporting multi-line descriptions and split category/money fields.
 - **Visual-row parser**: Document AI returns lines grouped by column rather than by visual row. The parser re-groups lines by y-coordinate proximity, then classifies each line into a column by x-coordinate.
 - **File-based Document AI cache**: API responses are cached to `.cache/docai/` as JSON, keyed by SHA-256 hash of the PDF bytes. This avoids repeated API calls during development and testing. The cache directory is volume-mounted in Docker Compose for persistence across rebuilds.
-- **In-memory preview sessions**: The `PREVIEW_SESSIONS` dict stores PDF bytes and parsed data for the review UI. This is suitable for single-process deployments; production would use Redis or a database.
+- **Preview session storage**: `preview_store.py` stores PDF bytes and parsed data for the review UI. Production and Docker Compose use Redis through `REDIS_URL`; local single-process development can fall back to in-memory storage.
+- **Swan-style server-rendered UI**: Standard pages share `app/static/style.css`; the review workspace uses `app/static/review.css` for equal-height panels, fit-width PDF rendering at `100%`, grouped toolbar controls, and transaction table sizing.
 - **No service account keys**: Firebase ID tokens are verified using Google's public certificates, avoiding the need to download or manage service account JSON keys.
 - **Bank-specific Excel export**: `excel_export.py` auto-detects the bank format from transaction data and exports with matching column headers (e.g. Capitec Personal exports Date, Description, Category, Money In, Money Out, Fee, Balance).

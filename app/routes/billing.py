@@ -38,7 +38,15 @@ def _app_limits_for_transparency() -> dict[str, Any]:
     return out
 
 
-def _build_pricing_block(transparency: dict[str, Any], pool_rollup: dict[str, Any], pool_id: str, scope: str, ym: str) -> dict[str, Any]:
+def _build_pricing_block(
+    transparency: dict[str, Any],
+    pool_rollup: dict[str, Any],
+    pool_id: str,
+    scope: str,
+    ym: str,
+    *,
+    include_finalized: bool = True,
+) -> dict[str, Any]:
     model = build_billing_context(transparency)
     ocr_docs = int(pool_rollup.get("total_documents", 0) or 0)
     non_ocr_docs = int(pool_rollup.get("total_non_ocr_documents", 0) or 0)
@@ -50,7 +58,7 @@ def _build_pricing_block(transparency: dict[str, Any], pool_rollup: dict[str, An
         non_ocr_documents=non_ocr_docs,
         context=model,
     )
-    finalized = get_finalized_statement(pool_id, ym)
+    finalized = get_finalized_statement(pool_id, ym) if include_finalized else None
     return {
         "google_usd_per_document": model.google_usd_per_document,
         "margin_per_document_usd": model.margin_per_document_usd,
@@ -107,7 +115,14 @@ async def billing_data(request: Request, authorization: str | None = Header(defa
     if not billing_enabled():
         defaults = default_billing_settings()
         ym = month_key()
-        pricing = _build_pricing_block(transparency, pool_rollup={}, pool_id=f"user:{user.uid}", scope="user", ym=ym)
+        pricing = _build_pricing_block(
+            transparency,
+            pool_rollup={},
+            pool_id=f"user:{user.uid}",
+            scope="user",
+            ym=ym,
+            include_finalized=False,
+        )
         payload = {
             "billing_enabled": False,
             "settings": {

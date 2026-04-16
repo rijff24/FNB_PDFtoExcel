@@ -7,9 +7,15 @@
     <link rel="stylesheet" href="/static/style.css" />
 </head>
 <body>
-<main class="container">
-    <h1>Billing &amp; Usage</h1>
-    <p><a href="/">&larr; Back to home</a> | <a href="/help">Help center</a></p>
+<main class="container app-shell">
+    <header class="page-header">
+        <h1>Billing &amp; Usage</h1>
+        <p>Track document volume, live estimates, platform costs, and your monthly processing limit.</p>
+        <nav class="page-actions" aria-label="Billing navigation">
+            <a href="/">&larr; Back to home</a>
+            <a href="/help">Help center</a>
+        </nav>
+    </header>
 
     <section class="card billing-notice-card" id="noticesSection" style="display:none;">
         <h2>Important</h2>
@@ -56,7 +62,7 @@
         <p class="status">Estimates from the Google Cloud Pricing Calculator; your actual Google invoice may differ (credits, promotions, rounding, timing).</p>
         <p id="transparencyScopeNote" class="status"></p>
         <p id="transparencyDate" class="status"></p>
-        <div style="overflow:auto;">
+        <div class="table-wrap">
             <table class="billing-table" id="transparencyTable">
                 <thead>
                 <tr>
@@ -85,7 +91,7 @@
 
     <section class="card">
         <h2>Your monthly limit</h2>
-        <form id="limitsForm">
+        <form id="limitsForm" class="form-grid">
             <label for="limitInput">Monthly limit amount (Rand / ZAR)</label>
             <input id="limitInput" type="number" step="0.01" min="0" />
 
@@ -104,7 +110,7 @@
 
     <section class="card">
         <h2>Recent usage events</h2>
-        <div style="overflow:auto;">
+        <div class="table-wrap">
             <table class="billing-table">
                 <thead>
                 <tr>
@@ -393,10 +399,10 @@
                     "1) Shared infrastructure per doc cannot be allocated yet because there are no documents this month.";
             }
             formulaLineOcr.textContent =
-                "2) OCR subtotal = " + totalOcrDocs + " × " + formatRand(ocrUnitZar) +
+                "2) OCR subtotal = " + totalOcrDocs + " x " + formatRand(ocrUnitZar) +
                 " = " + formatRand(ocrSubtotalZar) + ".";
             formulaLineNonOcr.textContent =
-                "3) Non-OCR subtotal = " + totalNonOcrDocs + " × " + formatRand(nonOcrUnitZar) +
+                "3) Non-OCR subtotal = " + totalNonOcrDocs + " x " + formatRand(nonOcrUnitZar) +
                 " = " + formatRand(nonOcrSubtotalZar) + ".";
             formulaLineTotal.textContent =
                 "4) Estimated total = OCR subtotal + Non-OCR subtotal = " + formatRand(estimatedTotal) + ".";

@@ -7,9 +7,14 @@
     <link rel="stylesheet" href="/static/style.css" />
 </head>
 <body>
-<main class="container">
-    <h1>Request Access</h1>
-    <p>Submit your details for manual account approval.</p>
+<main class="container app-shell upload-shell">
+    <header class="page-header">
+        <h1>Request Access</h1>
+        <p>Submit your details for manual account approval.</p>
+        <nav class="page-actions" aria-label="Registration navigation">
+            <a href="/">Back to home</a>
+        </nav>
+    </header>
     <section class="card">
         <form id="registerForm" class="auth-block">
             <label for="regName">Name</label>
@@ -24,7 +29,6 @@
             <p id="registerStatus" class="status"></p>
         </form>
     </section>
-    <p><a href="/">Back to home</a></p>
 </main>
 <script>
     document.getElementById("registerForm").addEventListener("submit", async function (e) {

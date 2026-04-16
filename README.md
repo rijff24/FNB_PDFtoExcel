@@ -10,33 +10,34 @@ Production-ready v1 web service that converts South African bank statement PDFs 
 - Interactive review page: edit cells, select/insert/delete rows, toggle PDF highlighting, synchronized vertical/horizontal scrolling, and calibrated PDF/table sync zoom
 - Exports a clean `.xlsx` with bank-specific column headers
 
-## For beta client testers
+## Documentation
 
-- Start here: [`docs/beta-onboarding.md`](docs/beta-onboarding.md)
-- Known limits/workarounds: [`docs/known-limitations.md`](docs/known-limitations.md)
-- Billing explanation: [`docs/billing-transparency.md`](docs/billing-transparency.md)
-- Support/escalation process: [`docs/support-and-escalation.md`](docs/support-and-escalation.md)
-- Incident and recovery communication: [`docs/incident-and-recovery.md`](docs/incident-and-recovery.md)
+- Engineering docs: [`docs/engineering/README.md`](docs/engineering/README.md)
+- In-app Help Center source: [`docs/help/`](docs/help/)
+- UI audit and future design contract:
+  - [`docs/engineering/ui-audit.md`](docs/engineering/ui-audit.md)
+  - [`docs/engineering/ui-design-contract.md`](docs/engineering/ui-design-contract.md)
 
 ## Core architecture (v1)
 
 ```mermaid
 flowchart TD
   User[User Browser] --> UI[GET / upload page]
-  UI --> Extract[POST /extract (multipart PDF + enable_ocr)]
-  Extract --> Auth[Session cookie or Firebase ID token verification]
+  UI --> Preview[POST /extract/preview]
+  Preview --> Auth[Session cookie or Firebase ID token verification]
   Auth -->|allowed| Quota[Quotas + abuse protection]
   Quota -->|ocr| DocAI[Document AI Bank Statement Parser]
   Quota -->|no-ocr| PDFPlumber[pdfplumber extract]
   PDFPlumber --> Parser[parser extracts rows]
   DocAI --> Parser
-  Parser --> Excel[Excel export: Transactions sheet]
-  Excel --> Download[Response: streamed .xlsx]
+  Parser --> Review[GET /review]
+  Review --> Save[PUT /preview/data/session_id]
+  Save --> Excel[GET /preview/download/session_id]
 ```
 
 ## Security & abuse protection (critical requirements)
 
-For v1, access must not be “open to the world”.
+For v1, access must not be open to the world.
 
 1. **Authentication (recommended/simple): Firebase Authentication**
    - Frontend signs in (Google and/or Email/Password).
@@ -64,17 +65,27 @@ For v1, access must not be “open to the world”.
 app/
   main.py
   routes/
+    auth.py
     upload.py
+    billing.py
+    admin.py
+    register.py
   services/
     banks.py             # Bank parser profiles and selection
     document_ai.py
     parser.py            # Position-based multi-bank parser
     excel_export.py      # Bank-specific Excel export
   templates/
-    index.html
+    index.html           # Upload / sign-in page
     review.html          # Interactive review with row management
+    billing.html
+    help.html
+    register.html
+    admin.html
   static/
-    style.css
+    style.css             # Shared Swan-style app CSS
+    review.css            # Review workspace CSS
+    firebase-auth.js
   utils/
     files.py
 requirements.txt
@@ -204,7 +215,7 @@ Quota enforcement behavior:
 
 - Quotas are enforced before any Document AI call for:
   - `POST /extract` when `enable_ocr=true`
-  - `POST /extract/preview` (always OCR)
+  - `POST /extract/preview` when `enable_ocr=true`
 - If Redis is unavailable, OCR requests fail closed with `503` to prevent uncontrolled spend.
 
 Preview-first workflow:
@@ -276,15 +287,14 @@ The browser signs in with Firebase, calls `POST /auth/session`, then relies on b
    - `npm install --save-dev esbuild`
 3. Create an esbuild entry file:
    - `frontend/auth.js`
-4. Bundle Firebase auth code into the backend’s static assets:
+4. Bundle Firebase auth code into the backend static assets:
    - From `c:\dev\FNB_PDFtoExcel\frontend` run:
      - `npx esbuild auth.js --bundle --platform=browser --format=iife --outfile=../app/static/firebase-auth.js`
-5. Next wiring step:
-   - Update `app/templates/index.html` to include `/static/firebase-auth.js` and ensure the UI calls `POST /auth/session`, then uses cookie-auth requests (and `X-CSRF-Token` for mutating calls).
+5. The built bundle is loaded by `app/templates/index.html`.
 
 ## Cloud Run deployment notes
 
-Use the image-based flow in [`docs/deployment.md`](docs/deployment.md):
+Use the image-based flow in [`docs/engineering/deployment.md`](docs/engineering/deployment.md):
 
 - `docker build` local image
 - `docker push` to Artifact Registry
@@ -293,7 +303,7 @@ Use the image-based flow in [`docs/deployment.md`](docs/deployment.md):
 
 ## Billing / charging path (simple, v1-safe)
 
-In v1 we’ll prevent abuse with quotas; then we’ll add usage recording per user:
+In v1 the app prevents abuse with quotas and records usage per user:
 
 - Track: user id/email, OCR enabled, pages processed, timestamps
 - Export monthly totals for invoicing (CSV now; automated billing later)
@@ -302,6 +312,6 @@ In v1 we’ll prevent abuse with quotas; then we’ll add usage recording per us
 ## Implementation status (important)
 
 This repository includes the extraction + Excel flow and Document AI integration.
-The remaining “critical requirements” to fully meet v1 security are:
+The remaining critical requirements to fully meet v1 security are:
 
 - none (auth and OCR quota/rate-limit guards are implemented)

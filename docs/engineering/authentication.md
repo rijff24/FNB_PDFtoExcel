@@ -54,8 +54,8 @@ After successful JWT verification, the user's email (from the `email` claim) is 
 
 Configured in the Firebase Console:
 
-1. **Google Sign-In** — `signInWithPopup(auth, googleProvider)` in the browser.
-2. **Email/Password** — `signInWithEmailAndPassword(auth, email, password)` in the browser.
+1. **Google Sign-In** - `signInWithPopup(auth, googleProvider)` in the browser.
+2. **Email/Password** - `signInWithEmailAndPassword(auth, email, password)` in the browser.
 
 ## Environment Variables
 
@@ -68,8 +68,8 @@ Configured in the Firebase Console:
 
 | Scenario | HTTP Status | Error Message |
 |---|---|---|
-| Missing `Authorization` header | 401 | Missing Authorization header |
-| Invalid/expired token | 401 | Invalid Firebase ID token |
+| Missing session cookie and missing Bearer token | 401 | Missing Authorization header or session cookie |
+| Invalid/expired token or session | 401 | Invalid Firebase ID token or session cookie |
 | Malformed JWT | 401 | Malformed Firebase ID token |
 | Email not in allowlist | 403 | User is not allowlisted |
 | Missing env vars | 500 | Missing required environment variable |

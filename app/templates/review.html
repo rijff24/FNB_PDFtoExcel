@@ -5,577 +5,10 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Bank Statement Review</title>
     <link rel="stylesheet" href="/static/style.css" />
-    <style>
-        body {
-            background: radial-gradient(circle at top left, #f1f5ff 0, #f9fafb 45%, #eef2ff 100%);
-        }
-
-        main.container {
-            max-width: 100%;
-            padding-inline: 0.5rem;
-        }
-
-        .review-layout {
-            display: flex;
-            align-items: flex-start;
-            gap: 0;
-        }
-
-        @media (max-width: 1024px) {
-            .review-layout {
-                flex-direction: column;
-            }
-            .review-layout .pdf-viewer,
-            .review-layout .transactions-card {
-                width: 100% !important;
-            }
-            .resize-handle { display: none; }
-        }
-
-        .pdf-viewer {
-            position: relative;
-            background: #020817;
-            border-radius: 18px;
-            padding: 0 0.75rem 0.75rem;
-            box-shadow:
-                0 18px 40px rgba(15, 23, 42, 0.45),
-                0 0 0 1px rgba(148, 163, 184, 0.22);
-            overflow-y: auto;
-            max-height: 88vh;
-            min-width: 200px;
-            flex-shrink: 0;
-        }
-
-        .pdf-viewer h2 {
-            font-size: 0.8rem;
-            letter-spacing: 0.08em;
-            text-transform: uppercase;
-            color: #94a3b8;
-            margin: 0;
-            position: static;
-            padding: 0.2rem 0 0.15rem;
-        }
-
-        .pdf-toolbar {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin: 0;
-            font-size: 0.8rem;
-            color: #9ca3af;
-            position: sticky;
-            top: 0;
-            z-index: 7;
-            background: #020817;
-            padding: 0.1rem 0 0.35rem;
-        }
-
-        .pdf-toolbar label {
-            display: inline-flex;
-            align-items: center;
-            gap: 0.4rem;
-        }
-
-        .pdf-toolbar input[type="range"] {
-            width: 120px;
-        }
-
-        .pdf-canvas-wrapper {
-            position: relative;
-            overflow-x: scroll;
-            overflow-y: visible;
-            scrollbar-gutter: stable both-edges;
-            margin-bottom: 0;
-        }
-
-        .sticky-x-scroll {
-            position: sticky;
-            bottom: 0;
-            z-index: 9;
-            height: 14px;
-            width: 100%;
-            overflow-x: auto;
-            overflow-y: hidden;
-        }
-
-        .sticky-x-scroll > div {
-            height: 1px;
-        }
-
-        .pdf-sticky-x {
-            background: #020817;
-            margin-bottom: 0;
-        }
-
-        .table-sticky-x {
-            background: #ffffff;
-        }
-
-        .status {
-            margin: 0.35rem 0 0;
-        }
-
-        .status:empty {
-            display: none;
-        }
-
-        .pdf-page {
-            position: relative;
-            margin-bottom: 8px;
-        }
-
-        .pdf-page canvas {
-            display: block;
-            border-radius: 8px;
-            background: #0b1120;
-        }
-
-        .pdf-page-overlay {
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            pointer-events: none;
-        }
-
-        .pdf-highlight {
-            position: absolute;
-            border: 2px solid #22d3ee;
-            background: rgba(34, 211, 238, 0.14);
-            box-shadow:
-                0 0 0 1px rgba(15, 23, 42, 0.7),
-                0 0 0 6px rgba(34, 211, 238, 0.18);
-            border-radius: 6px;
-            transition: all 120ms ease-out;
-        }
-
-        /* ── Resize handle ── */
-        .resize-handle {
-            width: 8px;
-            min-height: 200px;
-            align-self: stretch;
-            cursor: col-resize;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            flex-shrink: 0;
-            user-select: none;
-            z-index: 5;
-        }
-
-        .resize-handle-bar {
-            width: 4px;
-            height: 48px;
-            border-radius: 2px;
-            background: #cbd5e1;
-            transition: background 150ms;
-        }
-
-        .resize-handle:hover .resize-handle-bar,
-        .resize-handle.active .resize-handle-bar {
-            background: #2563eb;
-        }
-
-        /* ── Transactions card ── */
-        .transactions-card {
-            border-radius: 18px;
-            background: #ffffff;
-            box-shadow:
-                0 16px 35px rgba(15, 23, 42, 0.16),
-                0 0 0 1px rgba(148, 163, 184, 0.28);
-            padding: 0.75rem 1rem;
-            min-width: 300px;
-            flex: 1;
-            overflow: hidden;
-        }
-
-        .table-toolbar {
-            display: flex;
-            align-items: center;
-            gap: 0.4rem;
-            margin-top: 0;
-            flex-wrap: wrap;
-            row-gap: 0.35rem;
-            position: sticky;
-            top: 0;
-            z-index: 8;
-            background: #ffffff;
-            padding: 0.2rem 0;
-        }
-
-        .table-toolbar .toolbar-left,
-        .table-toolbar .toolbar-right {
-            display: flex;
-            align-items: center;
-            gap: 0.2rem;
-            flex-wrap: nowrap;
-        }
-
-        .tb-divider {
-            width: 1px;
-            height: 1.1rem;
-            background: #e2e8f0;
-            margin: 0 0.15rem;
-            flex-shrink: 0;
-        }
-
-        .table-toolbar button,
-        .table-toolbar .tb-icon-btn {
-            all: unset;
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            width: 28px;
-            height: 28px;
-            border-radius: 6px;
-            border: 1px solid transparent;
-            cursor: pointer;
-            color: #475569;
-            flex-shrink: 0;
-            transition: background 100ms, border-color 100ms, color 100ms;
-        }
-
-        .table-toolbar button:hover,
-        .table-toolbar .tb-icon-btn:hover {
-            background: #f1f5f9;
-            border-color: #e2e8f0;
-            color: #1e293b;
-        }
-
-        .table-toolbar button:focus-visible,
-        .table-toolbar .tb-icon-btn:focus-visible,
-        .tb-text-btn:focus-visible,
-        .tb-seg-option:focus-visible,
-        .review-toggle-btn:focus-visible {
-            outline: 3px solid #93c5fd;
-            outline-offset: 2px;
-        }
-
-        .table-toolbar button:disabled,
-        .table-toolbar .tb-icon-btn:disabled {
-            opacity: 0.3;
-            cursor: not-allowed;
-            background: transparent;
-            border-color: transparent;
-        }
-
-        .table-toolbar button:disabled:hover,
-        .table-toolbar .tb-icon-btn:disabled:hover {
-            background: transparent;
-            border-color: transparent;
-            color: #475569;
-        }
-
-        .tb-icon-btn.tb-active {
-            background: #e0f2fe;
-            border-color: #bae6fd;
-            color: #0369a1;
-        }
-
-        .tb-text-btn {
-            all: unset;
-            display: inline-flex;
-            align-items: center;
-            gap: 0.3rem;
-            padding: 4px 10px;
-            font-size: 0.7rem;
-            font-weight: 600;
-            border-radius: 6px;
-            background: #2563eb;
-            color: #fff;
-            cursor: pointer;
-            white-space: nowrap;
-            transition: background 100ms;
-            flex-shrink: 0;
-        }
-
-        .tb-text-btn:hover {
-            background: #1d4ed8;
-        }
-
-        .tb-text-btn:disabled {
-            opacity: 0.45;
-            cursor: not-allowed;
-        }
-
-        .tb-segment {
-            display: inline-flex;
-            border: 1px solid #e2e8f0;
-            border-radius: 6px;
-            overflow: hidden;
-            flex-shrink: 0;
-        }
-
-        .tb-seg-option {
-            all: unset;
-            padding: 3px 8px;
-            font-size: 0.65rem;
-            font-weight: 500;
-            cursor: pointer;
-            background: transparent;
-            color: #64748b;
-            border-right: 1px solid #e2e8f0;
-            white-space: nowrap;
-            transition: background 100ms, color 100ms;
-            user-select: none;
-        }
-
-        .tb-seg-option:last-child {
-            border-right: none;
-        }
-
-        .tb-seg-option:hover {
-            background: #f8fafc;
-        }
-
-        .tb-seg-option.active {
-            background: #e0e7ff;
-            color: #3730a3;
-            font-weight: 600;
-        }
-
-        .tb-label {
-            font-size: 0.65rem;
-            color: #64748b;
-            font-weight: 500;
-            white-space: nowrap;
-            user-select: none;
-        }
-
-        .tb-zoom-group {
-            display: inline-flex;
-            align-items: center;
-            gap: 0.25rem;
-            flex-shrink: 0;
-        }
-
-        .tb-zoom-group input[type="range"] {
-            width: 60px;
-            height: 14px;
-            cursor: pointer;
-        }
-
-        .tb-zoom-group input[type="checkbox"] {
-            width: 13px;
-            height: 13px;
-            margin: 0;
-            cursor: pointer;
-        }
-
-        #dirtyLabel {
-            font-size: 0.65rem;
-            color: #94a3b8;
-            white-space: nowrap;
-        }
-
-        .cell-input {
-            width: 100%;
-            height: 100%;
-            box-sizing: border-box;
-            border: none;
-            outline: none;
-            background: transparent;
-            font: inherit;
-            text-align: inherit;
-            padding: 0;
-            margin: 0;
-        }
-
-        .review-cell {
-            text-align: center;
-        }
-
-        .review-toggle-btn {
-            all: unset;
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            width: 1.1rem;
-            height: 1.1rem;
-            border-radius: 4px;
-            border: 1px solid #d1d5db;
-            font-size: 0.8rem;
-            line-height: 1;
-            cursor: pointer;
-        }
-
-        .review-toggle-btn.review-blank {
-            background: #ffffff;
-            color: #6b7280;
-        }
-
-        .review-toggle-btn.review-needs {
-            background: #fef3c7;
-            border-color: #f97316;
-            color: #f97316;
-        }
-
-        .review-toggle-btn.review-done {
-            background: #ecfdf3;
-            border-color: #22c55e;
-            color: #16a34a;
-        }
-
-        .transactions-table-wrapper {
-            max-height: 82vh;
-            overflow-y: auto;
-            overflow-x: auto;
-            margin-top: 0.5rem;
-            scrollbar-gutter: stable both-edges;
-        }
-
-        table.transactions {
-            width: 100%;
-            border-collapse: collapse;
-            font-size: 0.85rem;
-            table-layout: fixed;
-            user-select: none;
-            -webkit-user-select: none;
-        }
-
-        table.transactions th,
-        table.transactions td {
-            padding: 0.4rem 0.5rem;
-            border-bottom: 1px solid rgba(226, 232, 240, 0.9);
-            border-right: 1px solid rgba(226, 232, 240, 0.5);
-            text-align: left;
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
-        }
-
-        table.transactions th:last-child,
-        table.transactions td:last-child {
-            border-right: none;
-        }
-
-        table.transactions td.desc-cell {
-            white-space: normal;
-            word-break: break-word;
-            min-width: 140px;
-            overflow: visible;
-            text-overflow: clip;
-            line-height: 1.3;
-        }
-
-        table.transactions td.num-cell {
-            text-align: right;
-            font-variant-numeric: tabular-nums;
-        }
-
-        table.transactions th.num-header {
-            text-align: right;
-        }
-
-        /* Initial column widths (user can override via header drag) */
-        .col-index   { width: 2.5rem; }
-        .col-post-date { width: 5rem; }
-        .col-transaction-date { width: 5rem; }
-        .col-date    { width: 4.5rem; }
-        .col-desc    { width: 14rem; }
-        .col-reference { width: 16rem; }
-        .col-amount  { width: 6.5rem; }
-        .col-balance { width: 7rem; }
-        .col-charges  { width: 5rem; }
-        .col-category { width: 8rem; }
-        .col-money-in { width: 6rem; }
-        .col-money-out { width: 6rem; }
-        .col-review  { width: 2.5rem; }
-
-        table.transactions thead th {
-            position: sticky;
-            top: 0;
-            background: #f8fafc;
-            z-index: 7;
-            font-size: 0.74rem;
-            letter-spacing: 0.08em;
-            text-transform: uppercase;
-            color: #64748b;
-        }
-
-        .col-resizer {
-            position: absolute;
-            top: 0;
-            right: 0;
-            width: 6px;
-            height: 100%;
-            cursor: col-resize;
-            user-select: none;
-        }
-
-        table.transactions tbody tr:nth-child(even) {
-            background: #f9fafb;
-        }
-
-        table.transactions td[data-bbox] {
-            cursor: pointer;
-        }
-
-        table.transactions td[data-bbox]:hover {
-            background: rgba(34, 211, 238, 0.12);
-        }
-
-        table.transactions tr:hover {
-            background: #e0f2fe;
-            cursor: pointer;
-        }
-
-        tr.needs-review-row {
-            background: #fef9c3;
-        }
-
-        tr.selected-row {
-            background: rgba(59, 130, 246, 0.15) !important;
-        }
-
-        tr.selected-row.needs-review-row {
-            background: rgba(59, 130, 246, 0.22) !important;
-        }
-
-        .badge {
-            display: inline-flex;
-            align-items: center;
-            padding: 0.12rem 0.5rem;
-            border-radius: 999px;
-            font-size: 0.7rem;
-            font-weight: 500;
-        }
-
-        .badge-warning {
-            background: #fef3c7;
-            color: #92400e;
-        }
-
-        .review-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: baseline;
-            margin-bottom: 0.75rem;
-            padding-inline: 0.25rem;
-        }
-
-        .review-header h1 {
-            margin-bottom: 0.1rem;
-        }
-
-        .review-meta {
-            font-size: 0.82rem;
-            color: #6b7280;
-        }
-
-        .table-toolbar .toolbar-right {
-            margin-left: auto;
-        }
-
-        .link {
-            font-size: 0.85rem;
-            color: #2563eb;
-        }
-    </style>
+    <link rel="stylesheet" href="/static/review.css" />
 </head>
-<body>
-<main class="container">
+<body class="review-page">
+<main class="container review-container">
     <div class="review-header">
         <div>
             <h1>Statement Review</h1>
@@ -583,20 +16,21 @@
                 Session: <code>{{ session_id }}</code>
             </p>
         </div>
-        <div>
-            <a href="/" class="link">&larr; Back to upload</a> | <a href="/help" class="link">Help center</a>
+        <div class="page-actions">
+            <a href="/" class="link">&larr; Back to upload</a>
+            <a href="/help" class="link">Help center</a>
         </div>
     </div>
 
     <section class="review-layout" id="reviewLayout">
-        <div class="card pdf-viewer" id="pdfPanel">
+        <div class="pdf-viewer" id="pdfPanel">
             <h2>PDF</h2>
             <div class="pdf-toolbar">
                 <label>
                     Zoom
-                    <input id="zoomSlider" type="range" min="0.75" max="2.5" step="0.25" value="1.5" />
+                    <input id="zoomSlider" type="range" min="0.75" max="2.5" step="0.25" value="1.0" />
                 </label>
-                <span id="zoomValue">150%</span>
+                <span id="zoomValue">100%</span>
             </div>
             <div class="pdf-canvas-wrapper" id="pdfCanvasWrapper"></div>
             <div class="sticky-x-scroll pdf-sticky-x" id="pdfStickyX">
@@ -613,54 +47,67 @@
 
             <div class="table-toolbar" id="tableToolbar">
                 <div class="toolbar-left">
-                    <button type="button" class="tb-icon-btn" id="undoBtn" disabled title="Undo (Ctrl+Z)">
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg>
-                    </button>
-                    <button type="button" class="tb-icon-btn" id="redoBtn" disabled title="Redo (Ctrl+Y)">
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.13-9.36L23 10"/></svg>
-                    </button>
-                    <span class="tb-divider"></span>
-                    <button type="button" class="tb-icon-btn" id="addRowAboveBtn" disabled title="Insert row above">
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5"/><polyline points="5 12 12 5 19 12"/></svg>
-                    </button>
-                    <button type="button" class="tb-icon-btn" id="addRowBelowBtn" disabled title="Insert row below">
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14"/><polyline points="19 12 12 19 5 12"/></svg>
-                    </button>
-                    <button type="button" class="tb-icon-btn" id="deleteRowsBtn" disabled title="Delete selected rows (Del)">
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
-                    </button>
-                    <span class="tb-divider"></span>
-                    <button type="button" class="tb-icon-btn" id="saveBtn" disabled title="Save changes">
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
-                    </button>
-                    <button type="button" class="tb-text-btn" id="downloadBtn" title="Download Excel file">
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-                        Export
-                    </button>
+                    <div class="toolbar-group" aria-label="History controls">
+                        <span class="toolbar-group-label">History</span>
+                        <button type="button" class="tb-icon-btn" id="undoBtn" disabled title="Undo (Ctrl+Z)">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg>
+                        </button>
+                        <button type="button" class="tb-icon-btn" id="redoBtn" disabled title="Redo (Ctrl+Y)">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.13-9.36L23 10"/></svg>
+                        </button>
+                    </div>
+                    <div class="toolbar-group" aria-label="Row controls">
+                        <span class="toolbar-group-label">Rows</span>
+                        <button type="button" class="tb-icon-btn" id="addRowAboveBtn" disabled title="Insert row above">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5"/><polyline points="5 12 12 5 19 12"/></svg>
+                        </button>
+                        <button type="button" class="tb-icon-btn" id="addRowBelowBtn" disabled title="Insert row below">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14"/><polyline points="19 12 12 19 5 12"/></svg>
+                        </button>
+                        <button type="button" class="tb-icon-btn" id="deleteRowsBtn" disabled title="Delete selected rows (Del)">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
+                        </button>
+                    </div>
+                    <div class="toolbar-group" aria-label="Save and export controls">
+                        <span class="toolbar-group-label">Commit</span>
+                        <button type="button" class="tb-icon-btn" id="saveBtn" disabled title="Save changes">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+                        </button>
+                        <button type="button" class="tb-text-btn" id="downloadBtn" title="Download Excel file">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                            Export
+                        </button>
+                    </div>
                 </div>
                 <div class="toolbar-right">
-                    <button type="button" class="tb-icon-btn tb-active" id="highlightToggle" title="Toggle PDF highlighting">
-                        <svg id="hlIconOn" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
-                        <svg id="hlIconOff" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:none"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"/><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
-                    </button>
-                    <span class="tb-divider"></span>
-                    <span class="tb-label">Scroll</span>
-                    <div class="tb-segment" id="scrollModeSegment">
-                        <button type="button" class="tb-seg-option active" data-mode="auto" aria-pressed="true">Auto</button>
-                        <button type="button" class="tb-seg-option" data-mode="synced" aria-pressed="false">Sync</button>
-                        <button type="button" class="tb-seg-option" data-mode="none" aria-pressed="false">None</button>
+                    <div class="toolbar-group" aria-label="Assistance controls">
+                        <span class="toolbar-group-label">Assist</span>
+                        <button type="button" class="tb-icon-btn tb-active" id="highlightToggle" title="Toggle PDF highlighting">
+                            <svg id="hlIconOn" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                            <svg id="hlIconOff" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:none"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"/><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
+                        </button>
                     </div>
-                    <span class="tb-divider"></span>
-                    <div class="tb-zoom-group">
-                        <span class="tb-label">Tbl</span>
-                        <input id="tableZoomSlider" type="range" min="0.5" max="2.5" step="0.1" value="1.0" title="Table zoom" />
-                        <span class="tb-label" id="tableZoomValue">100%</span>
+                    <div class="toolbar-group" aria-label="Navigation controls">
+                        <span class="toolbar-group-label">Scroll</span>
+                        <div class="tb-segment" id="scrollModeSegment">
+                            <button type="button" class="tb-seg-option active" data-mode="auto" aria-pressed="true">Auto</button>
+                            <button type="button" class="tb-seg-option" data-mode="synced" aria-pressed="false">Sync</button>
+                            <button type="button" class="tb-seg-option" data-mode="none" aria-pressed="false">None</button>
+                        </div>
                     </div>
-                    <div class="tb-zoom-group">
-                        <input type="checkbox" id="syncZoomToggle" title="Sync PDF and table zoom" />
-                        <span class="tb-label">Sync</span>
+                    <div class="toolbar-group" aria-label="Scale controls">
+                        <span class="toolbar-group-label">Scale</span>
+                        <div class="tb-zoom-group">
+                            <span class="tb-label">Table</span>
+                            <input id="tableZoomSlider" type="range" min="0.5" max="2.5" step="0.1" value="1.0" title="Table zoom" />
+                            <span class="tb-label" id="tableZoomValue">100%</span>
+                        </div>
+                        <div class="tb-zoom-group">
+                            <input type="checkbox" id="syncZoomToggle" title="Sync PDF and table zoom" />
+                            <span class="tb-label">Sync</span>
+                        </div>
+                        <span id="dirtyLabel"></span>
                     </div>
-                    <span id="dirtyLabel"></span>
                 </div>
             </div>
 
@@ -688,6 +135,9 @@
                     </thead>
                     <tbody></tbody>
                 </table>
+            </div>
+            <div class="sticky-x-scroll table-sticky-x" id="tableStickyX">
+                <div id="tableStickyXInner"></div>
             </div>
         </div>
     </section>
@@ -719,7 +169,7 @@
         let dirtyCount = 0;
 
         let pdfDoc = null;
-        let currentZoom = 1.5;
+        let currentZoom = 1.0;
         let lastBbox = null;
         let lastBboxPage = 0;
         let clearTimer = null;
@@ -738,6 +188,8 @@
         let pageElements = [];
         let refreshPdfStickyX = function () {};
         let refreshTableStickyX = function () {};
+        let hasAutoFittedColumns = false;
+        let hasUserResizedColumns = false;
         const PDF_SYNC_MIN = 1.0;
         const TABLE_SYNC_AT_PDF_MIN = 0.53;
         const PDF_SYNC_MAX = 2.5;
@@ -813,6 +265,7 @@
         function configureTableStructure() {
             if (!transactionsColgroup || !transactionsHeaderRow) return;
             activeColumns = buildTableColumns();
+            hasAutoFittedColumns = false;
             transactionsColgroup.innerHTML = "";
             transactionsHeaderRow.innerHTML = "";
 
@@ -845,6 +298,81 @@
         }
 
         function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
+
+        function getPdfAvailableWidth() {
+            if (pdfCanvasWrapper && pdfCanvasWrapper.clientWidth) {
+                return pdfCanvasWrapper.clientWidth;
+            }
+            if (pdfViewer && pdfViewer.clientWidth) {
+                return Math.max(1, pdfViewer.clientWidth - 20);
+            }
+            return 1;
+        }
+
+        function getPdfRenderScale(page) {
+            var baseViewport = page.getViewport({ scale: 1 });
+            var fitScale = getPdfAvailableWidth() / Math.max(1, baseViewport.width);
+            return Math.max(0.1, fitScale * currentZoom);
+        }
+
+        function getColumnFitSpec(col, role) {
+            if (role === "index") return { min: 42, weight: 0 };
+            if (role === "review") return { min: 68, weight: 0 };
+
+            var field = col && col.field ? String(col.field) : "";
+            var colClass = col && col.colClass ? String(col.colClass) : "";
+            if (field === "description" || field === "reference" || field === "category" || col.descCell) {
+                return { min: colClass === "col-reference" ? 260 : colClass === "col-category" ? 132 : 230, weight: 4 };
+            }
+            if (field === "post_date") return { min: 112, weight: 1.2 };
+            if (field === "transaction_date") return { min: 116, weight: 1.2 };
+            if (field === "date") return { min: 108, weight: 1.2 };
+            if (field === "balance") return { min: 112, weight: 1.5 };
+            if (field === "money_out") return { min: 112, weight: 1.5 };
+            if (field === "amount" || field === "money_in" || field === "debits" || field === "credits") {
+                return { min: 108, weight: 1.5 };
+            }
+            if (field === "charges") return { min: 86, weight: 1 };
+            return { min: 96, weight: 1 };
+        }
+
+        function autoFitTransactionColumnsToPanel() {
+            if (!transactionsTableWrapper || !transactionsColgroup || hasUserResizedColumns) return;
+            var cols = Array.from(transactionsColgroup.children || []);
+            if (!cols.length) return;
+
+            var fitColumns = [{ role: "index", col: null }]
+                .concat((activeColumns || []).map(function (col) { return { role: "data", col: col }; }))
+                .concat([{ role: "review", col: null }]);
+            if (fitColumns.length !== cols.length) return;
+
+            var availableWidth = transactionsTableWrapper.clientWidth || 0;
+            if (!availableWidth) return;
+
+            var specs = fitColumns.map(function (entry) {
+                return getColumnFitSpec(entry.col, entry.role);
+            });
+            var minimumTotal = specs.reduce(function (sum, spec) { return sum + spec.min; }, 0);
+            var extra = Math.max(0, availableWidth - minimumTotal);
+            var totalWeight = specs.reduce(function (sum, spec) { return sum + spec.weight; }, 0);
+
+            specs.forEach(function (spec, index) {
+                var width = spec.min;
+                if (extra > 0 && totalWeight > 0 && spec.weight > 0) {
+                    width += extra * (spec.weight / totalWeight);
+                }
+                cols[index].style.width = Math.floor(width) + "px";
+            });
+
+            hasAutoFittedColumns = true;
+            refreshTableStickyX();
+        }
+
+        function getColumnResizeMinimum(index) {
+            if (index === 0) return getColumnFitSpec(null, "index").min;
+            if (index === (activeColumns || []).length + 1) return getColumnFitSpec(null, "review").min;
+            return getColumnFitSpec((activeColumns || [])[index - 1], "data").min;
+        }
 
         function getColumnValue(tx, col) {
             if (col.field === "debits") {
@@ -1218,7 +746,7 @@
             if (!pdfDoc) return;
             try {
                 var page = await pdfDoc.getPage(pageNumber);
-                var viewport = page.getViewport({ scale: currentZoom });
+                var viewport = page.getViewport({ scale: getPdfRenderScale(page) });
 
                 var wrapper = document.createElement("div");
                 wrapper.className = "pdf-page";
@@ -1264,7 +792,7 @@
                 try {
                     var page = await pdfDoc.getPage(i + 1);
                     if (gen !== renderGeneration) return;
-                    var viewport = page.getViewport({ scale: currentZoom });
+                    var viewport = page.getViewport({ scale: getPdfRenderScale(page) });
                     pe.canvas.width = viewport.width;
                     pe.canvas.height = viewport.height;
                     var ctx = pe.canvas.getContext("2d");
@@ -1341,7 +869,7 @@
                     checkbox.textContent = "!";
                 } else if (reviewState === "done") {
                     checkbox.classList.add("review-done");
-                    checkbox.textContent = "✓";
+                    checkbox.textContent = "\u2713";
                 } else {
                     checkbox.classList.add("review-blank");
                     checkbox.textContent = "";
@@ -1428,6 +956,9 @@
 
             applySelectionClasses();
             updateSelectionToolbar();
+            if (!hasAutoFittedColumns && !hasUserResizedColumns) {
+                autoFitTransactionColumnsToPanel();
+            }
         }
 
         async function loadTransactions() {
@@ -1574,7 +1105,7 @@
             refreshTableStickyX();
         }
 
-        /* ── Draggable resize handle ── */
+        /* Draggable resize handle */
         (function initResizeHandle() {
             var handle = document.getElementById("resizeHandle");
             var layout = document.getElementById("reviewLayout");
@@ -1612,6 +1143,8 @@
                 handle.classList.remove("active");
                 document.body.style.cursor = "";
                 document.body.style.userSelect = "";
+                if (pdfDoc) rerenderAllPages();
+                refreshPdfStickyX();
             });
         })();
 
@@ -1627,19 +1160,21 @@
             });
 
             var activeCol = null;
+            var activeColMinWidth = 40;
             var startX = 0;
             var startWidth = 0;
 
             function onMouseMove(e) {
                 if (!activeCol) return;
                 var dx = e.clientX - startX;
-                var newWidth = Math.max(40, startWidth + dx);
+                var newWidth = Math.max(activeColMinWidth, startWidth + dx);
                 activeCol.style.width = newWidth + "px";
             }
 
             function onMouseUp() {
                 if (!activeCol) return;
                 activeCol = null;
+                activeColMinWidth = 40;
                 document.removeEventListener("mousemove", onMouseMove);
                 document.removeEventListener("mouseup", onMouseUp);
                 document.body.style.cursor = "";
@@ -1658,7 +1193,9 @@
                     resizer.addEventListener("mousedown", function (e) {
                         e.preventDefault();
                         e.stopPropagation();
+                        hasUserResizedColumns = true;
                         activeCol = col;
+                        activeColMinWidth = getColumnResizeMinimum(index);
                         startX = e.clientX;
                         startWidth = th.offsetWidth || col.offsetWidth || 80;
                         document.body.style.cursor = "col-resize";
@@ -1670,6 +1207,7 @@
                     resizer.addEventListener("dblclick", function (e) {
                         e.preventDefault();
                         e.stopPropagation();
+                        hasUserResizedColumns = true;
                         var maxW = th.scrollWidth;
                         var bodyRows = table.tBodies[0] ? table.tBodies[0].rows : [];
                         for (var r = 0; r < bodyRows.length; r++) {
@@ -1678,7 +1216,7 @@
                                 maxW = Math.max(maxW, cell.scrollWidth);
                             }
                         }
-                        col.style.width = (maxW + 8) + "px";
+                        col.style.width = Math.max(getColumnResizeMinimum(index), maxW + 8) + "px";
                     });
                 })(i);
             }
@@ -1852,7 +1390,7 @@
                 });
             }
 
-            /* ── Synced scroll logic ── */
+            /* Synced scroll logic */
             var tableWrapper = document.querySelector(".transactions-table-wrapper");
             (function initSyncedScroll() {
                 if (!pdfViewer || !tableWrapper) return;
@@ -2034,7 +1572,7 @@
                 tableWrapper.addEventListener("scroll", tableScrollHandler, { passive: true });
             })();
 
-            /* ── Table zoom logic ── */
+            /* Table zoom logic */
             var tableZoomSlider = document.getElementById("tableZoomSlider");
             var tableZoomLabel = document.getElementById("tableZoomValue");
 
@@ -2054,6 +1592,15 @@
                 if (pdfDoc) rerenderAllPages();
                 refreshPdfStickyX();
             }
+
+            var pdfFitResizeTimer = null;
+            window.addEventListener("resize", function () {
+                if (!pdfDoc) return;
+                if (pdfFitResizeTimer) clearTimeout(pdfFitResizeTimer);
+                pdfFitResizeTimer = setTimeout(function () {
+                    rerenderAllPages();
+                }, 150);
+            });
 
             if (tableZoomSlider) {
                 tableZoomSlider.addEventListener("input", function () {

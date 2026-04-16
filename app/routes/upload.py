@@ -41,16 +41,14 @@ from app.services.preview_store import (
 )
 
 router = APIRouter()
-DOCS_DIR = Path(__file__).resolve().parents[2] / "docs"
+DOCS_ROOT = Path(__file__).resolve().parents[2] / "docs"
+HELP_DOCS_DIR = DOCS_ROOT / "help"
 HELP_DOCS: dict[str, dict[str, str]] = {
-    "how-the-app-works": {"title": "How the App Works", "file": "how-the-app-works.md"},
-    "functionality-overview": {"title": "Functionality Overview", "file": "functionality-overview.md"},
-    "how-to-use-the-app": {"title": "How to Use the App", "file": "how-to-use-the-app.md"},
-    "beta-onboarding": {"title": "Beta Onboarding", "file": "beta-onboarding.md"},
-    "known-limitations": {"title": "Known Limitations", "file": "known-limitations.md"},
-    "billing-transparency": {"title": "Billing Transparency", "file": "billing-transparency.md"},
-    "support-and-escalation": {"title": "Support and Escalation", "file": "support-and-escalation.md"},
-    "incident-and-recovery": {"title": "Incident and Recovery", "file": "incident-and-recovery.md"},
+    "getting-started": {"title": "Getting Started", "file": "getting-started.md"},
+    "review-and-export": {"title": "Review and Export", "file": "review-and-export.md"},
+    "billing-and-limits": {"title": "Billing and Limits", "file": "billing-and-limits.md"},
+    "known-limits": {"title": "Known Limits", "file": "known-limits.md"},
+    "support": {"title": "Support", "file": "support.md"},
 }
 
 def _authenticate_mutating_request(request: Request, authorization: str | None, path: str) -> AuthorizedUser:
@@ -127,7 +125,7 @@ def _load_help_doc(slug: str) -> dict[str, str]:
     doc = HELP_DOCS.get(slug)
     if not doc:
         raise HTTPException(status_code=404, detail="Help document not found.")
-    file_path = DOCS_DIR / doc["file"]
+    file_path = HELP_DOCS_DIR / doc["file"]
     if not file_path.exists():
         raise HTTPException(status_code=404, detail="Help document file missing.")
     raw = file_path.read_text(encoding="utf-8")

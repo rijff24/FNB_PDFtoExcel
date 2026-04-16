@@ -14,3 +14,4 @@ redis
 google-cloud-firestore
 firebase-admin
 google-cloud-bigquery
+httpx

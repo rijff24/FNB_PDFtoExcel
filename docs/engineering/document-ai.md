@@ -8,10 +8,20 @@ The application uses Google Cloud's **Document AI** service with **Bank Statemen
 
 Document AI provides:
 - **OCR text extraction**: Full text content of the PDF.
-- **Layout information**: Bounding boxes for every line and token, with normalized (0–1) coordinates relative to page dimensions.
+- **Layout information**: Bounding boxes for every line and token, with normalized 0-1 coordinates relative to page dimensions.
 - **Page structure**: Pages, lines, tokens, paragraphs, and tables.
 
-The visual-row parser (see [parser.md](parser.md)) relies on the layout information — specifically the `line` and `token` bounding boxes — to reconstruct the transaction table structure.
+The visual-row parser (see [parser.md](parser.md)) relies on the layout information, specifically the `line` and `token` bounding boxes, to reconstruct the transaction table structure.
+
+## Official Source Checks
+
+Checked on 2026-04-16.
+
+| Topic | Current source note | Official source |
+|---|---|---|
+| Pricing | Google Cloud Document AI pricing lists Bank Statement Parser at `$0.75 per classified document`. | https://cloud.google.com/document-ai/pricing |
+| Product limits | Google's Document AI limits page lists global content limits and Bank Statement Parser page limits. It shows `Last updated 2026-04-14 UTC`. | https://docs.cloud.google.com/document-ai/limits |
+| Processor behavior | Bank Statement Parser is public GA, API type `BANK_STATEMENT_PROCESSOR`, supports English, and has processor behavior documented in the processor list. | https://docs.cloud.google.com/document-ai/docs/processors-list |
 
 ## Configuration
 

@@ -1,6 +1,14 @@
 # API Reference
 
-All endpoints are defined in `app/routes/upload.py` and served by the FastAPI application.
+Endpoints are split across route modules and served by `app/main.py`.
+
+| Module | Public paths |
+|---|---|
+| `app/routes/auth.py` | `/auth/session`, `/auth/me` |
+| `app/routes/upload.py` | `/`, `/help`, `/extract`, `/extract/preview`, `/review`, `/preview/*` |
+| `app/routes/billing.py` | `/billing`, `/billing/data`, `/billing/limits` |
+| `app/routes/admin.py` | `/admin`, `/admin/*` |
+| `app/routes/register.py` | `/register`, `/register/request` |
 
 ## Endpoints
 
@@ -60,7 +68,7 @@ Extracts transactions from a PDF and returns an Excel file.
 
 | Field | Type | Required | Description |
 |---|---|---|---|
-| `file` | File (PDF) | Yes | The FNB statement PDF to process |
+| `file` | File (PDF) | Yes | Statement PDF to process |
 | `enable_ocr` | Boolean | No (default `false`) | Whether to use Google Document AI for OCR |
 
 **Success Response** (`200`):
@@ -73,7 +81,7 @@ Extracts transactions from a PDF and returns an Excel file.
 | Status | Condition |
 |---|---|
 | `400` | Not a PDF, empty file, or Document AI misconfigured |
-| `401` | Missing or invalid Bearer token |
+| `401` | Missing or invalid session cookie or Bearer token |
 | `403` | User email not in allowlist |
 | `422` | No transactions extracted from the PDF |
 | `500` | Server misconfiguration (missing env vars) |
@@ -90,8 +98,9 @@ Extracts transactions with full layout/bounding-box data for the review UI.
 
 | Field | Type | Required | Description |
 |---|---|---|---|
-| `file` | File (PDF) | Yes | The FNB statement PDF |
-| `enable_ocr` | Boolean | Yes (`true`) | Must be `true`; preview requires Document AI |
+| `file` | File (PDF) | Yes | Statement PDF to process |
+| `enable_ocr` | Boolean | No (default `false`) | Uses Document AI when `true`; uses local layout extraction when `false` |
+| `bank` | String | No (default `fnb`) | Enabled bank profile id or alias |
 
 **Success Response** (`200 JSON`):
 
@@ -123,7 +132,7 @@ Extracts transactions with full layout/bounding-box data for the review UI.
 }
 ```
 
-**Error Responses**: Same as `POST /extract`, plus `400` if `enable_ocr` is `false`.
+**Error Responses**: Same as `POST /extract`. Non-OCR preview can return `422` with `code: "ocr_recommended"` when the selected bank profile could not produce rows without OCR.
 
 ---
 
@@ -131,7 +140,7 @@ Extracts transactions with full layout/bounding-box data for the review UI.
 
 Serves the review page (PDF viewer + transactions table).
 
-- **Auth**: None (session-based; the session must exist)
+- **Auth**: None for the HTML shell. Data, PDF, save, and download endpoints require auth.
 - **Query Parameter**: `session_id` — the session ID from `/extract/preview`
 - **Response**: HTML (`review.html` template)
 
@@ -204,7 +213,7 @@ Response (`200 JSON`):
 
 Returns the raw PDF bytes for a preview session.
 
-- **Auth**: None (session-based)
+- **Auth**: Required — Bearer token or session cookie
 - **Response** (`200`): `application/pdf` binary
 - **Error**: `404` if session not found
 
@@ -214,10 +223,44 @@ Returns the raw PDF bytes for a preview session.
 
 Downloads an Excel file built from the session’s current (possibly user-edited) transactions.
 
-- **Auth**: None (session-based)
+- **Auth**: Required — Bearer token or session cookie
 - **Response** (`200`): `application/vnd.openxmlformats-officedocument.spreadsheetml.sheet`
 - **Content-Disposition**: `attachment; filename="statement_preview_edited.xlsx"`
 - **Error**: `404` if session not found
+
+---
+
+### Billing routes
+
+Defined in `app/routes/billing.py`.
+
+| Endpoint | Auth | Purpose |
+|---|---|---|
+| `GET /billing` | Public HTML shell | Renders the billing page. |
+| `GET /billing/data` | Required | Returns usage rollup, pricing model, transparency notes, app limits, and recent events. |
+| `PUT /billing/limits` | Required + CSRF for cookie auth | Updates monthly limit amount, warning threshold, and hard-stop setting. |
+
+### Register routes
+
+Defined in `app/routes/register.py`.
+
+| Endpoint | Auth | Purpose |
+|---|---|---|
+| `GET /register` | Public | Renders the account-access request page. |
+| `POST /register/request` | Public | Creates a pending signup request. |
+
+### Admin routes
+
+Defined in `app/routes/admin.py`. JSON endpoints require admin authorization unless noted.
+
+| Endpoint group | Purpose |
+|---|---|
+| `/admin`, `/admin/me` | Admin page shell and current-user admin check. |
+| `/admin/overview`, `/admin/users`, `/admin/requests`, `/admin/errors`, `/admin/usage/summary` | Split read endpoints used by `admin.html`. |
+| `/admin/reconciliation`, `/admin/reconciliation/run` | Cost reconciliation history and manual run action. |
+| `/admin/export?kind=...` | CSV exports for users, organizations, or events. |
+| `/admin/orgs*`, `/admin/users/{uid}/*`, `/admin/requests/{request_id}/*` | Organization, user, credit, billing-scope, and signup-request mutations. |
+| `/admin/billing-pricing`, `/admin/billing/finalize`, `/admin/billing/backfill-pools` | Pricing transparency, finalization, and rollup maintenance. |
 
 ---
 

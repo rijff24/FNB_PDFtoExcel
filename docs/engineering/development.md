@@ -28,7 +28,8 @@ pip install -r requirements.txt
 - `openpyxl` — Excel file generation
 - `pyjwt` — JWT decoding and verification
 - `cryptography` — X.509 certificate handling for JWT verification
-- `requests` — HTTP client for fetching Firebase public certificates
+- `requests` - HTTP client for fetching Firebase public certificates
+- `httpx` - required by Starlette/FastAPI `TestClient`
 
 ### 2. Install Frontend Dependencies
 
@@ -151,6 +152,14 @@ To avoid calling the Document AI API during development:
 
 ## Testing
 
+Run the full suite from the repository root:
+
+```bash
+pytest -q
+```
+
+`tests/conftest.py` keeps the repository root on `sys.path` so imports like `from app.main import app` work consistently across shells and CI environments.
+
 ### Compare Parser Output to Expected Data
 
 ```bash
@@ -177,13 +186,13 @@ Add your local URLs to **Firebase Console → Authentication → Settings → Au
 
 ### Document AI Returns Empty Results
 
-- Ensure the PDF is a valid FNB statement.
+- Ensure the PDF is a valid statement for the selected enabled bank profile.
 - Check that the Document AI processor type is "Bank Statement Parser".
 - Verify credentials: `gcloud auth application-default print-access-token` should return a token.
 
 ### Parser Misclassifies Columns
 
-The column boundary constants in `parser.py` are calibrated for a specific FNB statement layout. If your statements have a different layout:
+The column boundary constants in `parser.py` are calibrated per bank profile. If a supported statement layout changes:
 1. Run `docs/samplePDF/debug_page0.py` to inspect line x-positions.
 2. Adjust `_COL_CARD_X`, `_COL_AMOUNT_X`, `_COL_BALANCE_X`, `_COL_CHARGES_X` in `parser.py`.
 

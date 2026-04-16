@@ -7,10 +7,15 @@
     <link rel="stylesheet" href="/static/style.css" />
 </head>
 <body>
-<main class="container help-layout">
-    <h1>Help Center</h1>
-    <p class="status">Signed in as {{ user_email }}.</p>
-    <p><a href="/">&larr; Back to home</a></p>
+<main class="container app-shell help-layout">
+    <header class="page-header">
+        <h1>Help Center</h1>
+        <p>Short guides for uploading statements, reviewing transactions, billing, limits, and support.</p>
+        <p class="status">Signed in as {{ user_email }}.</p>
+        <nav class="page-actions" aria-label="Help navigation">
+            <a href="/">&larr; Back to home</a>
+        </nav>
+    </header>
 
     <section class="card help-shell">
         <aside class="help-nav">
@@ -19,7 +24,7 @@
                 {% for d in docs_nav %}
                 <li>
                     {% if d.slug == selected_doc.slug %}
-                    <strong>{{ d.title }}</strong>
+                    <span class="help-nav-active">{{ d.title }}</span>
                     {% else %}
                     <a href="/help?doc={{ d.slug }}">{{ d.title }}</a>
                     {% endif %}

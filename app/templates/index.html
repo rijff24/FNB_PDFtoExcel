@@ -6,22 +6,24 @@
     <title>Bank Statement To Excel</title>
     <link rel="stylesheet" href="/static/style.css" />
 </head>
-<body class="bootstrapping">
+<body class="bootstrapping app-page">
     <div id="homeLoadingOverlay" class="loading-overlay" aria-live="polite">
         <div class="loading-card">
             <div class="throbber" aria-hidden="true"></div>
             <p>Loading your workspace...</p>
         </div>
     </div>
-    <main id="homeAppShell" class="container">
-        <h1>Bank Statement To Excel</h1>
-        <p>Upload a statement PDF and download extracted transactions as Excel.</p>
-        <p id="publicLinks">
-            <span id="requestAccessWrap"><a href="/register">Request account access</a></span>
-            <span id="adminLinkWrap" style="display:none;"> | <a href="/admin">Admin panel</a></span>
-        </p>
+    <main id="homeAppShell" class="container app-shell upload-shell">
+        <header class="page-header">
+            <h1>Bank Statement To Excel</h1>
+            <p>Upload a statement PDF, review extracted rows, then export a clean Excel workbook.</p>
+            <p id="publicLinks" class="page-actions">
+                <span id="requestAccessWrap"><a href="/register">Request account access</a></span>
+                <span id="adminLinkWrap" style="display:none;"><a href="/admin">Admin panel</a></span>
+            </p>
+        </header>
 
-        <section class="card" id="usageWidget" style="display:none;">
+        <section class="card usage-compact" id="usageWidget" style="display:none;">
             <h2 class="upload-title">Usage this month</h2>
             <p id="usageSummary" class="status"></p>
             <p><a href="/billing">View detailed billing report</a></p>
@@ -46,9 +48,9 @@
             </div>
 
             <div id="signedInState" class="auth-block" style="display:none;">
-                <p>Signed in as: <span id="userEmail"></span></p>
+                <p>Signed in as <strong id="userEmail"></strong></p>
                 <p><a href="/help">Help center</a></p>
-                <button type="button" id="signOutBtn">Sign out</button>
+                <button type="button" id="signOutBtn" class="button-secondary">Sign out</button>
             </div>
 
             <p id="authStatus" class="status"></p>

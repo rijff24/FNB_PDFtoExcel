@@ -1,34 +1,57 @@
 # Frontend
 
-The frontend consists of two HTML pages served by the FastAPI backend, a bundled Firebase Auth module, and shared CSS.
+The frontend is a server-rendered FastAPI/Jinja app with vanilla JavaScript, a bundled Firebase Auth module, shared Swan-style CSS, and a dedicated review-workspace stylesheet. The review page still keeps its behavioral JavaScript inline in `review.html`; review-specific CSS now lives in `app/static/review.css`.
 
-## Pages
+## Screens
 
 ### Upload Page (`app/templates/index.html`)
 
 The landing page provides:
 - **Sign-in UI**: Google Sign-In button and email/password form.
-- **Upload form**: PDF file input, OCR toggle checkbox, "Download Excel" and "Preview & review" buttons.
+- **Upload form**: PDF file input, OCR toggle checkbox, bank selector, and a preview-first submit action.
 - **Auth state management**: UI toggles between signed-out and signed-in states based on Firebase auth state changes.
+
+### Billing Page (`app/templates/billing.html`)
+
+- Shows monthly usage, live/finalized pricing, limits, platform estimate notes, and recent usage events.
+- Uses `/billing/data` for read data and `PUT /billing/limits` for limit updates.
+
+### Help Page (`app/templates/help.html`)
+
+- Serves short user-safe topics from `docs/help/` only.
+- Engineering docs under `docs/engineering/` are not exposed through this route.
+
+### Register Page (`app/templates/register.html`)
+
+- Public account-access request form.
+- Posts to `/register/request`.
+
+### Admin Page (`app/templates/admin.html`)
+
+- Admin-only operational page for users, signup requests, organizations, billing settings, reconciliation, exports, and diagnostics.
+- Uses split `/admin/*` JSON endpoints rather than the legacy single data payload only.
 
 ### Review Page (`app/templates/review.html`)
 
 An interactive review interface with two panels:
 
-**Left panel — PDF Viewer**:
+**Left panel - PDF Viewer**:
 - Renders the uploaded PDF using [PDF.js](https://mozilla.github.io/pdf.js/) (v3.11.174, loaded from CDN).
-- Zoom slider (75%–250%) with live re-render.
+- Zoom slider (75%-250%) with live re-render.
+- PDF zoom is relative to fit-width: at `100%`, each page is rendered to fill the available PDF panel width. Higher/lower values scale from that fit-width baseline.
+- The PDF and transaction panels share one viewport-height workspace on desktop; each panel scrolls internally instead of stretching the page.
 - Highlight overlay: semi-transparent cyan rectangles drawn over bounding-box regions.
 - Smooth scroll to highlighted region.
 
-**Right panel — Transactions Table**:
+**Right panel - Transactions Table**:
 - Bank-specific column templates loaded from `BANK_TABLE_TEMPLATES` (FNB, Capitec Business, Capitec Personal, Standard Bank each have their own column layout).
 - Rows with `review_state: "needs"` (or legacy `needs_review: true`) get a yellow background.
 - Per-cell hover highlights: hovering a cell highlights that field's bounding box on the PDF.
 - Row click highlights the entire row's bounding box.
 - Debounced clear (60ms) prevents flicker when moving between cells.
 - Editable spreadsheet behavior: double-click to edit, Enter/Escape/blur commit flow.
-- Toolbar actions: Undo, Redo, Save, Download Excel, unsaved-changes indicator.
+- Toolbar actions are grouped by workflow: history, rows, commit, assist, navigation, and scale.
+- The table auto-fits its columns to the transaction panel on initial render. Date-like columns have minimum widths sized for full `YYYY-MM-DD` values, and manual resize remains the user override.
 - For Standard Bank:
   - `Service fee` displays `#` markers.
   - `Debits` and `Credits` highlight independently (separate bbox fields).
@@ -61,13 +84,13 @@ An interactive review interface with two panels:
 - **None**: no automatic scrolling. Highlighting still works if enabled, but neither panel auto-moves.
 
 **Table Zoom**:
-- A "Table Zoom" slider (50%–250%) in the toolbar applies a CSS `transform: scale()` to the transactions table.
+- A "Table Zoom" slider (50%-250%) in the toolbar applies a CSS `transform: scale()` to the transactions table.
 - Ctrl+Scroll (or trackpad pinch) over the table panel zooms the table.
 - Ctrl+Scroll (or trackpad pinch) over the PDF panel zooms the PDF.
 
 **Sync Zoom**:
 - A "Sync Zoom" checkbox links the PDF zoom and table zoom through a calibrated mapping instead of a strict 1:1 percentage.
-- Calibration target currently matches observed visual parity in review sessions: approximately `PDF 100% ≈ Table 53%` and `PDF 250% ≈ Table 123%`.
+- PDF percentages are relative to the current fit-width baseline. The sync calibration maps that relative PDF zoom to the table zoom for visual parity.
 - When checked, changing either zoom (via slider, Ctrl+Scroll, or pinch) updates both panels through this mapping.
 - Ctrl+Scroll/pinch uses a reduced zoom step (25% of the original increment) and applies a short zoom guard to prevent sync-scroll handlers from reacting to zoom-induced layout changes.
 
@@ -93,8 +116,10 @@ const firebaseConfig = {
 
 1. User clicks "Sign in with Google" or enters email/password.
 2. Firebase SDK authenticates the user and provides an ID token.
-3. On `POST /extract` or `POST /extract/preview`, the browser attaches `Authorization: Bearer <ID token>` to the request headers.
-4. Backend verifies the token (see [authentication.md](authentication.md)).
+3. Browser posts the ID token once to `POST /auth/session`.
+4. Backend sets `session` and `csrf_token` cookies.
+5. Mutating browser requests use cookie auth plus `X-CSRF-Token`.
+6. Bearer token fallback still exists for transitional/API clients (see [authentication.md](authentication.md)).
 
 ### Building the Bundle
 
@@ -123,14 +148,15 @@ This bundles the Firebase SDK and auth logic into a single IIFE that is loaded b
 
 | File | Description |
 |---|---|
-| `app/static/style.css` | Shared CSS for both pages (layout, cards, buttons, inputs) |
-| `app/static/firebase-auth.js` | Bundled Firebase Auth (do not edit directly — rebuild from `frontend/auth.js`) |
+| `app/static/style.css` | Shared Swan-style design tokens, page shells, cards, buttons, inputs, tables, statuses, and responsive utilities |
+| `app/static/review.css` | Review-workspace layout, toolbar, PDF panel, transactions table, column sizing, and review-specific controls |
+| `app/static/firebase-auth.js` | Bundled Firebase Auth (do not edit directly - rebuild from `frontend/auth.js`) |
 
-## Review UI — Highlight System
+## Review UI - Highlight System
 
 The review page implements a per-field highlight system across a multi-page scrollable PDF viewer:
 
-1. All PDF pages are rendered into the scrollable `.pdf-canvas-wrapper` container. Each page has its own canvas and overlay stored in the `pageElements` array.
+1. All PDF pages are rendered into `.pdf-canvas-wrapper`; the surrounding `.pdf-viewer` handles vertical scrolling. Each page has its own canvas and overlay stored in the `pageElements` array.
 2. Each transaction cell stores its bounding box in a `data-bbox` attribute (JSON string). Each table row stores its `data-page-index`.
 3. On `mouseenter` (when highlighting is enabled), the bbox is parsed and `drawHighlight(bbox, pageIndex)` is called.
 4. `drawHighlight` creates an absolutely-positioned `<div class="pdf-highlight">` inside the target page's overlay, positioned using normalized bbox coordinates mapped to the canvas dimensions.
@@ -139,7 +165,7 @@ The review page implements a per-field highlight system across a multi-page scro
 
 ### Coordinate System
 
-All bounding boxes use **normalized coordinates** (0.0–1.0):
+All bounding boxes use **normalized coordinates** (0.0-1.0):
 - `x_min`, `x_max`: horizontal position relative to page width.
 - `y_min`, `y_max`: vertical position relative to page height.
 
@@ -181,12 +207,14 @@ The review screen keeps an in-memory mutable `transactions` array as the source 
 - The table columns are user-resizable by dragging header-edge resizers.
 - Double-clicking a column resizer auto-fits that column to its widest visible content.
 - The PDF/table split is user-resizable via the vertical handle between panels.
+- Releasing the split handle rerenders the PDF so the current relative zoom continues to fit the updated PDF panel width.
 - Column widths are fixed during edit mode so entering edit mode does not cause column expansion.
+- Initial column auto-fit runs once after transactions render and does not override later user resizing.
 
 ### Horizontal scrolling
 
-- Both the PDF content wrapper and transactions table wrapper expose horizontal scrollbars.
-- `scrollbar-gutter: stable both-edges` is applied so horizontal scrollbar space stays reserved and avoids layout jitter.
+- The PDF content wrapper exposes horizontal scrolling only when the selected relative zoom exceeds the panel width.
+- The transactions table wrapper exposes horizontal scrolling when the active bank's columns cannot fit the panel.
 
 ### Description wrapping behavior
 

@@ -1,29 +1,30 @@
-# Bank Statement To Excel — Documentation
+# Bank Statement To Excel Documentation
 
-This folder contains the full technical documentation for the **Bank Statement To Excel** project, a web application that extracts structured transaction data from South African bank statement PDFs (FNB, Capitec Business, Capitec Personal, Standard Bank) and exports them as Excel spreadsheets.
+This folder is split by audience.
 
-## Documentation Index
+## Documentation Tracks
 
-| Document | Description |
+| Track | Purpose |
 |---|---|
-| [Architecture](architecture.md) | System architecture, component diagram, data flow |
-| [API Reference](api-reference.md) | All HTTP endpoints with request/response schemas |
-| [Parser](parser.md) | Multi-bank position-based PDF parsing algorithm |
-| [Document AI](document-ai.md) | Google Document AI integration, caching, and configuration |
-| [Authentication](authentication.md) | Firebase Authentication flow and email allowlist |
-| [Frontend](frontend.md) | Browser-side auth, esbuild bundling, and review UI |
-| [Development](development.md) | Local development setup, environment variables, testing |
-| [Deployment](deployment.md) | Cloud Run deployment, GCP setup, and production config |
-| [Beta Onboarding](beta-onboarding.md) | Tester quickstart and first-run checklist |
-| [Known Limitations](known-limitations.md) | Current product limits and workarounds |
-| [Support and Escalation](support-and-escalation.md) | Severity levels, response expectations, escalation path |
-| [Incident and Recovery](incident-and-recovery.md) | Incident lifecycle and recovery checklist |
-| [Billing Transparency](billing-transparency.md) | Pooled billing explanation and user-visible totals |
-| [Operations Runbook](operations-runbook.md) | Day-2 operations, smoke checks, rollback guidance |
+| [Engineering](engineering/README.md) | Maintainer-facing architecture, API, frontend, billing, parser, deployment, and operations docs. |
+| [Help](help/) | Short in-app Help Center topics for signed-in users. |
+| [Sample PDF tools](samplePDF/README.md) | Parser validation scripts, cached outputs, and sample-data notes. |
 
-## Quick Links
+## Current Product Shape
 
-- **Repository root**: `../`
-- **Backend entry point**: `../app/main.py`
-- **Sample PDF & test data**: `samplePDF/`
-- **Root README**: `../README.md`
+- FastAPI renders server-side Jinja templates.
+- Browser behavior is plain JavaScript plus a bundled Firebase Auth module.
+- The main user flow is preview-first: upload, review/edit transactions, then export Excel.
+- Supported enabled bank profiles are FNB, Capitec Business, Capitec Personal, and Standard Bank.
+- Future UI work should keep the engineering UI audit and design contract synchronized with code changes.
+
+## Important Engineering Docs
+
+- [Architecture](engineering/architecture.md)
+- [API Reference](engineering/api-reference.md)
+- [Frontend](engineering/frontend.md)
+- [UI Audit](engineering/ui-audit.md)
+- [UI Design Contract](engineering/ui-design-contract.md)
+- [Document AI](engineering/document-ai.md)
+- [Development](engineering/development.md)
+- [Operations Runbook](engineering/operations-runbook.md)

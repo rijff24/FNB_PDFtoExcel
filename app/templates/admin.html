@@ -7,10 +7,14 @@
     <link rel="stylesheet" href="/static/style.css" />
 </head>
 <body>
-<main class="container">
-    <h1>Admin Panel</h1>
-    <p>Admin-only controls for operations, billing, users, and diagnostics.</p>
-    <p><a href="/">Back to home</a></p>
+<main class="container app-shell app-shell-wide">
+    <header class="page-header">
+        <h1>Admin Panel</h1>
+        <p>Admin-only controls for operations, billing, users, and diagnostics.</p>
+        <nav class="page-actions" aria-label="Admin navigation">
+            <a href="/">Back to home</a>
+        </nav>
+    </header>
 
     <section class="card">
         <h2>Pooled billing &amp; transparency</h2>
@@ -53,13 +57,13 @@
             <label for="bpNoticeAccuracy">Accuracy / FX disclaimer</label>
             <textarea id="bpNoticeAccuracy" rows="3"></textarea>
             <label for="bpLineItemsJson">Platform cost line items (JSON array)</label>
-            <p class="status" style="font-size:0.9rem;">
+            <p class="status admin-note">
                 Each object may include optional <code>estimate_limits</code>: an array of
-                <code>{ "label": "…", "value": "…" }</code> pairs (copy labels/values from the Google Cloud Pricing Calculator export).
+                <code>{ "label": "...", "value": "..." }</code> pairs (copy labels/values from the Google Cloud Pricing Calculator export).
                 Existing fields stay the same: <code>service</code>, <code>sku</code>, <code>quantity</code>,
                 <code>quantity_unit</code>, <code>region</code>, <code>monthly_usd</code>, <code>notes</code>, <code>doc_url</code>.
             </p>
-            <textarea id="bpLineItemsJson" rows="12" style="font-family:monospace;font-size:0.85rem;"></textarea>
+            <textarea id="bpLineItemsJson" rows="12" class="code-input"></textarea>
             <button type="submit">Save billing &amp; transparency</button>
             <p id="billingPricingStatus" class="status"></p>
         </form>
@@ -87,7 +91,7 @@
             <button type="submit">Finalize month</button>
             <p id="finalizeStatus" class="status"></p>
         </form>
-        <form id="backfillPoolsForm" class="auth-block" style="margin-top:12px;">
+        <form id="backfillPoolsForm" class="auth-block follow-up-form">
             <label for="backfillMonth">Backfill month (YYYYMM)</label>
             <input id="backfillMonth" type="text" placeholder="202604" />
             <button type="submit">Backfill pool rollups</button>
@@ -107,7 +111,7 @@
         <div class="button-row">
             <button id="runReconBtn" type="button">Run reconciliation now</button>
         </div>
-        <div style="overflow:auto;">
+        <div class="table-wrap">
             <table class="billing-table">
                 <thead>
                 <tr><th>Date</th><th>App estimate</th><th>Financial truth</th><th>Variance</th><th>Variance %</th><th>Status</th></tr>
@@ -131,7 +135,7 @@
 
     <section class="card">
         <h2>Pending Signup Requests</h2>
-        <div style="overflow:auto;">
+        <div class="table-wrap">
             <table class="billing-table">
                 <thead>
                 <tr><th>Email</th><th>Name</th><th>Organization</th><th>How heard</th><th>Suggested Org</th><th>Actions</th></tr>
@@ -144,7 +148,7 @@
     <section class="card">
         <h2>Users</h2>
         <p id="userActionStatus" class="status">Use the action toolbar to manage user status, credits, org, and billing scope.</p>
-        <div style="overflow:auto;">
+        <div class="table-wrap">
             <table class="billing-table">
                 <thead>
                 <tr><th>Email</th><th>Status</th><th>Credits</th><th>Org</th><th>Actions</th></tr>
@@ -187,7 +191,7 @@
 
     <section class="card">
         <h2>Error Tracking</h2>
-        <div style="overflow:auto;">
+        <div class="table-wrap">
             <table class="billing-table">
                 <thead>
                 <tr><th>Date & time</th><th>Event</th><th>Path</th><th>Details</th></tr>
