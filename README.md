@@ -202,7 +202,7 @@ Quotas (choose conservative values to protect Document AI usage):
 
 Billing defaults/config:
 
-- `DEFAULT_MONTHLY_LIMIT` (e.g. `100.00`)
+- `DEFAULT_MONTHLY_LIMIT` (e.g. `500.00`)
 - `DEFAULT_WARN_PCT` (e.g. `80`)
 - `FIRESTORE_DATABASE_ID` (production uses the named Firestore database `fnb-billing`)
 - `ADMIN_ERROR_TRACKING_ENABLED` (optional, default `true`)

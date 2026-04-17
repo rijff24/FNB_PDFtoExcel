@@ -4,12 +4,19 @@ from app.services.billing import (
     calculate_marginal_cost,
     calculate_pool_snapshot,
     DEFAULT_TIER_BRACKETS,
+    default_billing_settings,
     DocumentCostBreakdown,
     calculate_document_cost,
     evaluate_limits,
     generate_tier_table,
     tier_price_usd,
 )
+
+
+def test_default_billing_settings_limit_is_500(monkeypatch) -> None:
+    monkeypatch.delenv("DEFAULT_MONTHLY_LIMIT", raising=False)
+    settings = default_billing_settings()
+    assert settings.monthly_limit_amount == 500.0
 
 
 def test_tier_price_bracket_lookup() -> None:

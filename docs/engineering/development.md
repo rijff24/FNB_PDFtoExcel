@@ -71,7 +71,7 @@ export REDIS_URL="redis://localhost:6379/0"
 
 # Optional billing/usage tracking
 export BILLING_ENABLED="true"
-export DEFAULT_MONTHLY_LIMIT="100.00"
+export DEFAULT_MONTHLY_LIMIT="500.00"
 export DEFAULT_WARN_PCT="80"
 export FIRESTORE_DATABASE_ID="fnb-billing"
 export ADMIN_ERROR_TRACKING_ENABLED="true"
@@ -130,7 +130,7 @@ In Compose mode, `REDIS_URL` is set to `redis://redis:6379/0`.
 | `MAX_PAGES_PER_DAY_PER_USER` | Yes (OCR) | — | Per-user OCR page budget per day |
 | `REDIS_URL` | Yes (OCR) | — | Redis connection URL for quota counters |
 | `BILLING_ENABLED` | No | `false` | Enables billing and usage tracking flows |
-| `DEFAULT_MONTHLY_LIMIT` | No | `100.00` | Default monthly limit for new users |
+| `DEFAULT_MONTHLY_LIMIT` | No | `500.00` | Default monthly limit for new users |
 | `DEFAULT_WARN_PCT` | No | `80` | Warning threshold percentage |
 | `FIRESTORE_DATABASE_ID` | No | `(default)` | Firestore database id for named databases |
 | `ADMIN_ERROR_TRACKING_ENABLED` | No | `true` | Persist error events to Firestore for admin diagnostics |

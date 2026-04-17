@@ -124,7 +124,7 @@ Set these in Cloud Run:
 | `MAX_PAGES_PER_DAY_PER_USER` | `300` |
 | `REDIS_URL` | `<redis-url>` |
 | `BILLING_ENABLED` | `true` |
-| `DEFAULT_MONTHLY_LIMIT` | `100.00` |
+| `DEFAULT_MONTHLY_LIMIT` | `500.00` |
 | `DEFAULT_WARN_PCT` | `80` |
 | `FIRESTORE_DATABASE_ID` | `fnb-billing` for production |
 | `BQ_BILLING_TABLE` | Full BigQuery billing export table path |

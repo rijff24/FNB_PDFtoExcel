@@ -92,7 +92,7 @@ def _float_env(name: str, default: float) -> float:
 
 
 def _default_limit() -> float:
-    return _float_env("DEFAULT_MONTHLY_LIMIT", 100.0)
+    return _float_env("DEFAULT_MONTHLY_LIMIT", 500.0)
 
 
 def _default_warn_pct() -> float:
