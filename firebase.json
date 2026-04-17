@@ -1,0 +1,6 @@
+{
+  "firestore": {
+    "database": "fnb-billing",
+    "indexes": "firestore.indexes.json"
+  }
+}

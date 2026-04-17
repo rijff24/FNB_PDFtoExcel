@@ -111,6 +111,11 @@ Set these in Cloud Run:
 | `BILLING_ENABLED` | `true` |
 | `DEFAULT_MONTHLY_LIMIT` | `100.00` |
 | `DEFAULT_WARN_PCT` | `80` |
+| `FIRESTORE_DATABASE_ID` | `fnb-billing` for production |
+| `BQ_BILLING_TABLE` | Full BigQuery billing export table path |
+| `RECONCILIATION_TZ` | `Africa/Johannesburg` |
+| `RECONCILIATION_ALERT_PCT` | `15` |
+| `RECONCILIATION_COLLECTION` | `cost_reconciliation_daily` |
 | `LOG_LEVEL` | `INFO` |
 
 ### Build and Push
@@ -190,19 +195,25 @@ These quota limits are enforced before Document AI calls.
 
 ### Firestore Query Indexes
 
-This project includes a baseline index definition in `firestore.indexes.json`.
+This project includes a baseline composite index definition in `firestore.indexes.json`.
+The Firebase project metadata in `.firebaserc` and `firebase.json` targets the
+production named Firestore database, `fnb-billing`. Keep `FIRESTORE_DATABASE_ID`
+set to the same database ID in Cloud Run.
 
 Deploy indexes:
 
-```bash
-gcloud firestore indexes composite create --file=firestore.indexes.json
+```powershell
+firebase deploy --only firestore:indexes --project fnb-pdf-to-excel-prod-491212
 ```
 
-If you prefer Firebase CLI:
+Do not add single-field indexes to `firestore.indexes.json`. Firestore manages
+normal ascending and descending single-field indexes automatically. For example,
+`cost_reconciliation_daily.day ASC` is not a valid composite index entry by
+itself and Firebase will reject it as unnecessary.
 
-```bash
-firebase deploy --only firestore:indexes
-```
+If the Firebase CLI tries to create or deploy to `(default)`, check that
+`firebase.json` includes `"database": "fnb-billing"` under the `firestore`
+configuration before rerunning the command.
 
 ### Cache Layer
 

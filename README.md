@@ -200,7 +200,7 @@ Billing defaults/config:
 
 - `DEFAULT_MONTHLY_LIMIT` (e.g. `100.00`)
 - `DEFAULT_WARN_PCT` (e.g. `80`)
-- `FIRESTORE_DATABASE_ID` (optional, required when using named Firestore DB)
+- `FIRESTORE_DATABASE_ID` (production uses the named Firestore database `fnb-billing`)
 - `ADMIN_ERROR_TRACKING_ENABLED` (optional, default `true`)
 - `BQ_BILLING_TABLE` (BigQuery billing export table for financial-truth reconciliation)
 - `RECONCILIATION_TZ` (optional timezone for daily reconciliation buckets, default `Africa/Johannesburg`)
@@ -300,6 +300,7 @@ Use the image-based flow in [`docs/engineering/deployment.md`](docs/engineering/
 - `docker push` to Artifact Registry
 - `gcloud run deploy --image ...`
 - set auth + OCR + quota env vars (including `REDIS_URL`)
+- deploy Firestore indexes with `firebase deploy --only firestore:indexes --project fnb-pdf-to-excel-prod-491212`; `firebase.json` targets the `fnb-billing` database
 
 ## Billing / charging path (simple, v1-safe)
 

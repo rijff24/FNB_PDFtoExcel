@@ -25,13 +25,6 @@
         { "fieldPath": "status", "order": "ASCENDING" },
         { "fieldPath": "created_at", "order": "DESCENDING" }
       ]
-    },
-    {
-      "collectionGroup": "cost_reconciliation_daily",
-      "queryScope": "COLLECTION",
-      "fields": [
-        { "fieldPath": "day", "order": "ASCENDING" }
-      ]
     }
   ],
   "fieldOverrides": []
