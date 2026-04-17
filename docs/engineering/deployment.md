@@ -5,8 +5,8 @@ The application is designed to run on **Google Cloud Run** with Firebase Authent
 ## Architecture Overview
 
 ```
-Internet → Cloud Run (FastAPI app) → Document AI API
-                  ↑
+Internet -> Cloud Run (FastAPI app) -> Document AI API
+                  ^
           Firebase Auth (JWT verification via public certs)
 ```
 
@@ -20,7 +20,7 @@ Internet → Cloud Run (FastAPI app) → Document AI API
 
 ### 1. Enable Required APIs
 
-In **APIs & Services → Enable APIs and Services**:
+In **APIs & Services -> Enable APIs and Services**:
 
 - Cloud Run Admin API
 - Cloud Build API
@@ -30,7 +30,7 @@ In **APIs & Services → Enable APIs and Services**:
 ### 2. Create Artifact Registry Repository
 
 ```
-Artifact Registry → Repositories → Create repository
+Artifact Registry -> Repositories -> Create repository
   Name:     webapp-images
   Format:   Docker
   Mode:     Standard
@@ -42,7 +42,7 @@ Image path: `africa-south1-docker.pkg.dev/<project-id>/webapp-images`
 ### 3. Create Document AI Processor
 
 ```
-Document AI → Processors → Create processor
+Document AI -> Processors -> Create processor
   Type:     Bank Statement Parser
   Name:     fnb-bank-statement-parser
   Region:   eu
@@ -53,7 +53,7 @@ Note the **Processor ID** for `DOCUMENTAI_PROCESSOR_ID`.
 ### 4. Create Runtime Service Account
 
 ```
-IAM & Admin → Service Accounts → Create
+IAM & Admin -> Service Accounts -> Create
   Name:  cloudrun-pdf-service
   Email: cloudrun-pdf-service@<project-id>.iam.gserviceaccount.com
 ```
@@ -61,28 +61,29 @@ IAM & Admin → Service Accounts → Create
 Grant roles on the GCP project:
 - **Document AI API User** (`roles/documentai.apiUser`)
 - **Logs Writer** (`roles/logging.logWriter`)
-- **Secret Manager Secret Accessor** (`roles/secretmanager.secretAccessor`) — optional, for future secret management
+- **Secret Manager Secret Accessor** (`roles/secretmanager.secretAccessor`) - optional, for future secret management
 
 ## Firebase Setup
 
 ### 1. Link Firebase to GCP Project
 
-Firebase Console → Create project → Connect to existing GCP project.
+Firebase Console -> Create project -> Connect to existing GCP project.
 
 ### 2. Enable Auth Providers
 
-Firebase Console → Authentication → Enable:
+Firebase Console -> Authentication -> Enable:
 - **Google**
 - **Email/Password**
 
 ### 3. Add Authorized Domains
 
-Firebase Console → Authentication → Settings → Authorized domains:
-- Add your Cloud Run URL (e.g., `your-service-xxxxx-xx.a.run.app`)
+Firebase Console -> Authentication -> Settings -> Authorized domains:
+- Add the temporary Cloud Run URL while testing.
+- Add the final custom domain after mapping, for example `statements.swan-computing.com`.
 
 ### 4. Create User Accounts
 
-Firebase Console → Authentication → Users → Add users that should be in the allowlist.
+Firebase Console -> Authentication -> Users -> Add users that should be in the allowlist.
 
 ## Cloud Run Deployment (Image-Based)
 
@@ -91,6 +92,14 @@ This repository uses an image-based deployment flow:
 1. Build the Docker image locally.
 2. Push the image to Artifact Registry.
 3. Deploy Cloud Run using `--image`.
+
+Production naming:
+
+| Item | Value |
+|---|---|
+| Cloud Run service | `statement-to-excel` |
+| Public custom domain | `statements.swan-computing.com` |
+| Artifact image name | `fnb-pdf-to-excel` |
 
 ### Environment Variables
 
@@ -138,7 +147,7 @@ docker push "${IMAGE_URI}"
 ### Deploy Cloud Run
 
 ```bash
-gcloud run deploy fnb-pdf-to-excel \
+gcloud run deploy statement-to-excel \
   --image "${IMAGE_URI}" \
   --region "${REGION}" \
   --service-account "cloudrun-pdf-service@${PROJECT_ID}.iam.gserviceaccount.com" \
@@ -154,7 +163,7 @@ gcloud run deploy fnb-pdf-to-excel \
 
 | Setting | Value | Reason |
 |---|---|---|
-| Timeout | 120s | Document AI processing can take 30–60s for large PDFs |
+| Timeout | 120s | Document AI processing can take 30-60s for large PDFs |
 | Memory | 512Mi | PDF processing and Excel generation are memory-intensive |
 | CPU | 1 | Sufficient for single-user / low-traffic usage |
 | Min instances | 1 | Keeps one warm instance to reduce auth/dashboard latency |
@@ -171,7 +180,7 @@ Preview/review sessions should use shared storage (Redis/Memorystore) in product
 
 ### Document AI Caching
 
-The file-based cache (`.cache/docai/`) is **ephemeral** on Cloud Run — it will be cleared on every container restart. For production:
+The file-based cache (`.cache/docai/`) is **ephemeral** on Cloud Run - it will be cleared on every container restart. For production:
 - This is acceptable: the cache primarily benefits local development.
 - Optionally, use a Cloud Storage bucket for persistent caching.
 
@@ -214,6 +223,34 @@ itself and Firebase will reject it as unnecessary.
 If the Firebase CLI tries to create or deploy to `(default)`, check that
 `firebase.json` includes `"database": "fnb-billing"` under the `firestore`
 configuration before rerunning the command.
+
+### Custom Domain
+
+The production custom domain is `statements.swan-computing.com`.
+
+Before Cloud Run can map the domain, `swan-computing.com` must be verified for
+the Google account or project. Use Google Search Console domain verification:
+
+1. Open https://search.google.com/search-console/welcome.
+2. Add a **Domain** property for `swan-computing.com`.
+3. Copy the TXT verification record Google provides.
+4. Add that TXT record at the DNS provider for `swan-computing.com`.
+5. Wait for DNS propagation, then click **Verify** in Search Console.
+
+After verification, create the Cloud Run mapping:
+
+```powershell
+gcloud beta run domain-mappings create `
+  --project=fnb-pdf-to-excel-prod-491212 `
+  --region=africa-south1 `
+  --service=statement-to-excel `
+  --domain=statements.swan-computing.com
+```
+
+Then add the DNS records shown by Google. For a subdomain this is usually a
+CNAME, but use the exact records returned by Cloud Run. After the managed
+certificate is active, add `statements.swan-computing.com` to Firebase Auth
+authorized domains and use it as the public app URL.
 
 ### Cache Layer
 

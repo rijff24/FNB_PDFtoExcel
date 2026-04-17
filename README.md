@@ -298,9 +298,10 @@ Use the image-based flow in [`docs/engineering/deployment.md`](docs/engineering/
 
 - `docker build` local image
 - `docker push` to Artifact Registry
-- `gcloud run deploy --image ...`
+- `gcloud run deploy statement-to-excel --image ...`
 - set auth + OCR + quota env vars (including `REDIS_URL`)
 - deploy Firestore indexes with `firebase deploy --only firestore:indexes --project fnb-pdf-to-excel-prod-491212`; `firebase.json` targets the `fnb-billing` database
+- map the public custom domain `statements.swan-computing.com` after verifying `swan-computing.com` ownership in Google Search Console
 
 ## Billing / charging path (simple, v1-safe)
 
