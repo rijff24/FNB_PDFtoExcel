@@ -78,8 +78,9 @@ Firebase Console -> Authentication -> Enable:
 ### 3. Add Authorized Domains
 
 Firebase Console -> Authentication -> Settings -> Authorized domains:
-- Add the temporary Cloud Run URL while testing.
-- Add the final custom domain after mapping, for example `statements.swan-computing.com`.
+- Add the neutral Cloud Run URL for the current beta:
+  `statement-to-excel-1052852371581.africa-south1.run.app`.
+- If a custom domain is added later, add that domain too.
 
 ### 4. Create User Accounts
 
@@ -98,7 +99,8 @@ Production naming:
 | Item | Value |
 |---|---|
 | Cloud Run service | `statement-to-excel` |
-| Public custom domain | `statements.swan-computing.com` |
+| Current public URL | `https://statement-to-excel-1052852371581.africa-south1.run.app` |
+| Deferred custom domain | `statements.swan-computing.com` |
 | Artifact image name | `fnb-pdf-to-excel` |
 
 ### Environment Variables
@@ -226,31 +228,27 @@ configuration before rerunning the command.
 
 ### Custom Domain
 
-The production custom domain is `statements.swan-computing.com`.
+The current beta uses the neutral Cloud Run URL:
 
-Before Cloud Run can map the domain, `swan-computing.com` must be verified for
-the Google account or project. Use Google Search Console domain verification:
-
-1. Open https://search.google.com/search-console/welcome.
-2. Add a **Domain** property for `swan-computing.com`.
-3. Copy the TXT verification record Google provides.
-4. Add that TXT record at the DNS provider for `swan-computing.com`.
-5. Wait for DNS propagation, then click **Verify** in Search Console.
-
-After verification, create the Cloud Run mapping:
-
-```powershell
-gcloud beta run domain-mappings create `
-  --project=fnb-pdf-to-excel-prod-491212 `
-  --region=africa-south1 `
-  --service=statement-to-excel `
-  --domain=statements.swan-computing.com
+```text
+https://statement-to-excel-1052852371581.africa-south1.run.app
 ```
 
-Then add the DNS records shown by Google. For a subdomain this is usually a
-CNAME, but use the exact records returned by Cloud Run. After the managed
-certificate is active, add `statements.swan-computing.com` to Firebase Auth
-authorized domains and use it as the public app URL.
+The intended future custom domain is:
+
+```text
+https://statements.swan-computing.com
+```
+
+Custom domain work is deferred until the app has enough usage to justify the
+extra monthly cost. Direct Cloud Run domain mappings are not available in
+`africa-south1`. The production-grade custom-domain path is a global external
+HTTPS load balancer with a serverless NEG pointing at `statement-to-excel`.
+Budget roughly the load balancer base cost plus data processing before enabling
+this path.
+
+`swan-computing.com` has already been verified in Google Search Console. Keep
+the DNS verification TXT record in place so the domain stays verified.
 
 ### Cache Layer
 

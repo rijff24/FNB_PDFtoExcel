@@ -301,7 +301,7 @@ Use the image-based flow in [`docs/engineering/deployment.md`](docs/engineering/
 - `gcloud run deploy statement-to-excel --image ...`
 - set auth + OCR + quota env vars (including `REDIS_URL`)
 - deploy Firestore indexes with `firebase deploy --only firestore:indexes --project fnb-pdf-to-excel-prod-491212`; `firebase.json` targets the `fnb-billing` database
-- map the public custom domain `statements.swan-computing.com` after verifying `swan-computing.com` ownership in Google Search Console
+- use the neutral Cloud Run URL for beta; custom domain mapping is deferred until the app justifies the extra monthly cost
 
 ## Billing / charging path (simple, v1-safe)
 
