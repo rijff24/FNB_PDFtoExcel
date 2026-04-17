@@ -142,8 +142,12 @@ In **APIs & Services -> Enable APIs and Services**, enable:
     - `cloudrun-pdf-service@fnb-pdf-to-excel-prod-491212.iam.gserviceaccount.com`
 - Grant roles (on the GCP project):
   - `Document AI API User`
+  - `Firebase Authentication Admin`
   - `Logs Writer`
-  - `Secret Manager Secret Accessor` (optional now, useful later)
+  - `Secret Manager Secret Accessor`
+  - `Cloud Datastore User`
+  - `BigQuery Job User`
+  - `BigQuery Data Viewer`
 
 ## Firebase Authentication setup (manual)
 

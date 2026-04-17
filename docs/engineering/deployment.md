@@ -60,8 +60,12 @@ IAM & Admin -> Service Accounts -> Create
 
 Grant roles on the GCP project:
 - **Document AI API User** (`roles/documentai.apiUser`)
+- **Firebase Authentication Admin** (`roles/firebaseauth.admin`) - required to create backend Firebase session cookies
 - **Logs Writer** (`roles/logging.logWriter`)
-- **Secret Manager Secret Accessor** (`roles/secretmanager.secretAccessor`) - optional, for future secret management
+- **Secret Manager Secret Accessor** (`roles/secretmanager.secretAccessor`)
+- **Cloud Datastore User** (`roles/datastore.user`) - required for Firestore billing/admin data
+- **BigQuery Job User** (`roles/bigquery.jobUser`) - required for billing reconciliation queries
+- **BigQuery Data Viewer** (`roles/bigquery.dataViewer`) - required to read billing export data
 
 ## Firebase Setup
 
