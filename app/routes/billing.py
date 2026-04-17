@@ -15,7 +15,7 @@ from app.services.csrf import should_enforce_csrf, validate_double_submit_csrf
 from app.services.logging_utils import log_event
 from app.services.response_cache import get_cached, invalidate_prefix, set_cached
 from app.services.usage_store import get_billing_report, get_pool_rollup, get_user_billing_settings, resolve_billing_pool, update_user_billing_settings
-from app.services.admin_store import get_billing_pricing_global
+from app.services.admin_store import get_billing_pricing_global, get_organization
 
 router = APIRouter()
 
@@ -59,6 +59,7 @@ def _build_pricing_block(
         context=model,
     )
     finalized = get_finalized_statement(pool_id, ym) if include_finalized else None
+    pool_description = _describe_billing_pool(scope=scope, pool_id=pool_id)
     return {
         "google_usd_per_document": model.google_usd_per_document,
         "margin_per_document_usd": model.margin_per_document_usd,
@@ -66,6 +67,10 @@ def _build_pricing_block(
         "infra_monthly_usd": model.infra_monthly_usd,
         "scope": scope,
         "pool_id": pool_id,
+        "pool_label": pool_description["label"],
+        "pool_detail": pool_description["detail"],
+        "pool_org_name": pool_description.get("org_name"),
+        "monthly_platform_cost_zar": round(model.infra_monthly_usd * model.usd_to_zar, 6),
         "current_volume": live.total_documents,
         "shared_infra_per_document_usd": live.shared_infra_per_document_usd,
         "ocr_unit_usd": live.ocr_unit_usd,
@@ -76,6 +81,36 @@ def _build_pricing_block(
         "mode": "finalized" if finalized else "live",
         "finalized": finalized,
         "pricing_model_version": "pooled_live_finalized_v1",
+    }
+
+
+def _describe_billing_pool(*, scope: str, pool_id: str) -> dict[str, str | None]:
+    normalized_scope = str(scope or "user").strip().lower()
+    if normalized_scope == "organization":
+        raw_org_id = pool_id.removeprefix("org:") if pool_id.startswith("org:") else ""
+        if raw_org_id == "unassigned":
+            return {
+                "label": "Unassigned organization pool",
+                "detail": "Users without an assigned organization",
+                "org_name": None,
+            }
+        org = get_organization(raw_org_id)
+        org_name = str((org or {}).get("name") or "").strip()
+        if org_name:
+            return {
+                "label": org_name,
+                "detail": "Organization billing pool",
+                "org_name": org_name,
+            }
+        return {
+            "label": "Assigned organization",
+            "detail": "Organization billing pool",
+            "org_name": None,
+        }
+    return {
+        "label": "Your individual billing pool",
+        "detail": "User billing pool",
+        "org_name": None,
     }
 
 

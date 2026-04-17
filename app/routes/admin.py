@@ -42,6 +42,25 @@ from app.services.logging_utils import log_event
 router = APIRouter()
 
 
+def _organization_name_map() -> dict[str, str]:
+    out: dict[str, str] = {}
+    for org in list_organizations():
+        org_id = str(org.get("org_id") or "").strip()
+        name = str(org.get("name") or "").strip()
+        if org_id and name:
+            out[org_id] = name
+    return out
+
+
+def _with_org_names(items: list[dict[str, Any]], *, key: str = "org_id") -> list[dict[str, Any]]:
+    names = _organization_name_map()
+    for row in items:
+        org_id = str(row.get(key) or "").strip()
+        if org_id:
+            row["org_name"] = names.get(org_id) or ""
+    return items
+
+
 def _authenticate_admin_mutation(request: Request, authorization: str | None, path: str):
     result = authenticate_request_with_mode(authorization, request=request, path=path, require_admin=True)
     if should_enforce_csrf(request, result.auth_mode):
@@ -140,7 +159,7 @@ async def _admin_users_payload(
     cached = get_cached(cache_key, ttl_seconds=20)
     if cached is not None:
         return cached
-    all_items = list_users(limit=max(500, limit + offset))
+    all_items = _with_org_names(list_users(limit=max(500, limit + offset)))
     items = all_items[offset : offset + limit]
     payload = {"items": items, "total": len(all_items), "limit": limit, "offset": offset}
     set_cached(cache_key, payload, ttl_seconds=20)
@@ -248,6 +267,8 @@ async def _admin_usage_summary_payload(
     if cached is not None:
         return cached
     summary = get_admin_usage_summary(month_key)
+    if isinstance(summary.get("by_org"), list):
+        _with_org_names(summary["by_org"])
     payload = {"month": month_key, "summary": summary}
     set_cached(cache_key, payload, ttl_seconds=20)
     return payload

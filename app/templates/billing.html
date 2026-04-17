@@ -36,6 +36,11 @@
     <section class="card">
         <h2>How we price each document (pooled)</h2>
         <p id="pricingExplain" class="status">Loading...</p>
+        <p class="status">
+            The first successful Statement Review in a billing pool starts allocating the monthly platform cost for that month.
+            This is not a separate charge per user; it is the website operating cost shared across the active documents in your billing pool.
+            The estimate can change during the month as more users in the same organization process statements.
+        </p>
         <div class="metric-grid">
             <p class="metric-item"><strong>Google (list) USD / document</strong><span id="metricGoogleUsd">&mdash;</span></p>
             <p class="metric-item"><strong>Our margin USD / document</strong><span id="metricMarginUsd">&mdash;</span></p>
@@ -48,6 +53,7 @@
         </div>
         <p class="status">Live repricing: all documents in your current billing pool share infrastructure cost for the month. OCR documents add Google Document AI variable cost; non-OCR documents do not. Month-end finalization freezes totals and invoice values.</p>
         <h3>Your estimate breakdown (real numbers)</h3>
+        <p id="firstUsePlatformCost" class="status"></p>
         <p id="formulaMode" class="status"></p>
         <p id="formulaScope" class="status"></p>
         <p id="formulaLineInfra" class="status"></p>
@@ -130,7 +136,7 @@
 
 <script>
     (async function () {
-        const BILLING_CACHE_KEY_PREFIX = "billingDataCacheV3";
+        const BILLING_CACHE_KEY_PREFIX = "billingDataCacheV4";
         const BILLING_CACHE_TTL_MS = 120000;
         const token = sessionStorage.getItem("idToken") || localStorage.getItem("idToken");
         const summaryText = document.getElementById("summaryText");
@@ -152,6 +158,7 @@
         const metricTierZar = document.getElementById("metricTierZar");
         const pricingExplain = document.getElementById("pricingExplain");
         const formulaMode = document.getElementById("formulaMode");
+        const firstUsePlatformCost = document.getElementById("firstUsePlatformCost");
         const formulaScope = document.getElementById("formulaScope");
         const formulaLineInfra = document.getElementById("formulaLineInfra");
         const formulaLineOcr = document.getElementById("formulaLineOcr");
@@ -355,6 +362,9 @@
             const mode = String(pricing.mode || "live");
             const poolId = String(pricing.pool_id || "-");
             const scope = String(pricing.scope || "user");
+            const poolLabel = String(pricing.pool_label || (scope + " pool"));
+            const poolDetail = String(pricing.pool_detail || "");
+            const monthlyPlatformCost = Number(pricing.monthly_platform_cost_zar || 0);
             const infraPerDocUsd = Number(pricing.shared_infra_per_document_usd || 0);
             const ocrUnitZar = Number(pricing.ocr_unit_zar || 0);
             const nonOcrUnitZar = Number(pricing.non_ocr_unit_zar || 0);
@@ -382,14 +392,17 @@
                 ? ("Your current volume: " + totalDocs + " docs this month.")
                 : "No documents processed yet this month.";
             pricingExplain.textContent = volText +
-                " Pool scope: " + (pricing.scope || "user") +
+                " Billing pool: " + poolLabel +
                 ". Shared infra/doc: " + formatUsd(infraPerDocUsd) +
                 ". Mode: " + (pricing.mode || "live") + ".";
 
+            firstUsePlatformCost.textContent =
+                "Monthly platform cost for this pool: " + formatRand(monthlyPlatformCost) +
+                ". It starts being allocated on first successful use in the month and is divided across the pool's documents before month-end finalization.";
             formulaMode.textContent = mode === "finalized"
                 ? "Pricing mode: Finalized for this month (values are locked)."
                 : "Pricing mode: Live estimate (reprices as pool usage changes).";
-            formulaScope.textContent = "Billing pool: " + scope + " (" + poolId + ")";
+            formulaScope.textContent = "Billing pool: " + poolLabel + (poolDetail ? " - " + poolDetail : "");
             if (totalDocs > 0) {
                 formulaLineInfra.textContent =
                     "1) Shared infrastructure per doc = " + formatUsd(pricing.infra_monthly_usd || 0) +

@@ -1,4 +1,5 @@
 from fastapi.testclient import TestClient
+from types import SimpleNamespace
 
 from app.main import app
 from app.services.access_control import AuthResult
@@ -33,6 +34,56 @@ def test_billing_data_returns_summary_when_disabled(monkeypatch) -> None:
     assert payload["pricing_model"] == "pooled_live_finalized_v1"
     assert "shared_infra_per_document_usd" in payload["pricing"]
     assert "report" in payload
+
+
+def test_billing_data_returns_organization_pool_label(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "app.routes.billing.authenticate_request",
+        lambda _auth, path, request=None: AuthorizedUser(email="user@example.com", uid="u-org-label"),
+    )
+    monkeypatch.setattr("app.routes.billing.billing_enabled", lambda: True)
+    monkeypatch.setattr("app.routes.billing.get_billing_pricing_global", _fake_transparency)
+    monkeypatch.setattr(
+        "app.routes.billing.get_user_billing_settings",
+        lambda _uid: SimpleNamespace(monthly_limit_amount=500.0, warn_pct=80.0, hard_stop_enabled=True),
+    )
+    monkeypatch.setattr(
+        "app.routes.billing.get_billing_report",
+        lambda _uid: {
+            "month": "202604",
+            "rollup": {"total_documents": 0, "total_non_ocr_documents": 0, "total_billable": 0.0, "event_count": 0},
+            "daily_breakdown": [],
+            "recent_events": [],
+        },
+    )
+    monkeypatch.setattr(
+        "app.routes.billing.resolve_billing_pool",
+        lambda _uid, email=None, ym=None, pricing=None: {
+            "scope": "organization",
+            "pool_id": "org:o1",
+            "org_id_at_lock": "o1",
+        },
+    )
+    monkeypatch.setattr(
+        "app.routes.billing.get_pool_rollup",
+        lambda _pool_id, _ym=None: {
+            "total_documents": 0,
+            "total_non_ocr_documents": 0,
+            "total_billable": 0.0,
+            "event_count": 0,
+        },
+    )
+    monkeypatch.setattr("app.routes.billing.get_organization", lambda _org_id: {"org_id": "o1", "name": "Swan Computing"})
+    monkeypatch.setattr("app.routes.billing.get_finalized_statement", lambda _pool_id, _ym: None)
+
+    client = TestClient(app)
+    response = client.get("/billing/data", headers={"Authorization": "Bearer token"})
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["pricing"]["pool_label"] == "Swan Computing"
+    assert payload["pricing"]["pool_detail"] == "Organization billing pool"
+    assert payload["pricing"]["monthly_platform_cost_zar"] == 172.05
+    assert payload["pricing"]["pool_id"] == "org:o1"
 
 
 def test_billing_limits_updates_when_enabled(monkeypatch) -> None:

@@ -18,6 +18,9 @@ def test_home_page_has_preview_only_action() -> None:
     assert "Download Excel" not in html
     assert "Usage this month" in html
     assert "/billing" in html
+    assert 'id="firstUseBillingModal"' in html
+    assert 'id="firstUseBillingText"' in html
+    assert "Before your first Statement Review" in html
 
 
 def test_help_center_uses_help_docs_only(monkeypatch) -> None:
@@ -106,6 +109,8 @@ def test_shared_css_defines_swan_design_contract() -> None:
     assert "border: 1px solid rgba(54, 191, 177, 0.28);" in style_css
     assert "input::file-selector-button" in style_css
     assert "select option" in style_css
+    assert "[hidden]" in style_css
+    assert ".modal-card h2" in style_css
     assert "var(--swan-gradient-subtle),\n        #001a2c;" in style_css
     assert "var(--swan-gradient-subtle),\n        #001a2c;" in review_css
     assert ".table-toolbar button," not in review_css
@@ -136,6 +141,23 @@ def test_review_table_auto_fit_contract() -> None:
     assert ".col-date { width: 108px; }" in review_css
     assert ".col-post-date { width: 112px; }" in review_css
     assert ".col-transaction-date { width: 116px; }" in review_css
+
+
+def test_first_use_billing_dialog_contract() -> None:
+    auth_js = (ROOT / "app" / "static" / "firebase-auth.js").read_text(encoding="utf-8")
+    billing_html = (ROOT / "app" / "templates" / "billing.html").read_text(encoding="utf-8")
+    admin_html = (ROOT / "app" / "templates" / "admin.html").read_text(encoding="utf-8")
+
+    assert "statementReviewFirstUseBillingAck" in auth_js
+    assert "function isFirstBillingPoolUse(data)" in auth_js
+    assert "function showFirstUseBillingDialog(data, user)" in auth_js
+    assert "monthly_platform_cost_zar" in auth_js
+    assert "Checking billing..." in auth_js
+    assert "Billing pool: \" + poolLabel" in billing_html
+    assert "firstUsePlatformCost" in billing_html
+    assert "The first successful Statement Review in a billing pool" in billing_html
+    assert "function organizationNameForId(orgId)" in admin_html
+    assert "organizationLabelForId(user.org_id)" in admin_html
 
 
 def test_review_workspace_equal_height_contract() -> None:

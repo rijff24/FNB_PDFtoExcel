@@ -239,6 +239,21 @@
         let activeUserAction = null;
         let userActionModalOpener = null;
 
+        function organizationNameForId(orgId) {
+            const needle = String(orgId || "").trim();
+            if (!needle) return "";
+            const org = organizations.find(function (row) {
+                return String(row.org_id || "") === needle;
+            });
+            return org ? String(org.name || "") : "";
+        }
+
+        function organizationLabelForId(orgId) {
+            const needle = String(orgId || "").trim();
+            if (!needle) return "unassigned";
+            return organizationNameForId(needle) || "Unknown organization";
+        }
+
         function getCookie(name) {
             const target = name + "=";
             const parts = document.cookie ? document.cookie.split(";") : [];
@@ -450,12 +465,14 @@
             const status = String(user.status || "active").toLowerCase();
             const approveDisabled = status === "active";
             const revokeDisabled = status === "revoked";
+            const orgLabel = user.org_name || organizationLabelForId(user.org_id);
+            const orgTitle = user.org_id ? " title='Organization ID: " + user.org_id + "'" : "";
             const tr = document.createElement("tr");
             tr.innerHTML =
                 "<td>" + (user.email || user.uid) + "</td>" +
                 "<td>" + (user.status || "active") + "</td>" +
                 "<td>" + Number(user.credits_balance || 0).toFixed(2) + "</td>" +
-                "<td>" + (user.org_id || "unassigned") + "<br><small>scope: " + (user.billing_scope || "default") + "</small></td>" +
+                "<td" + orgTitle + ">" + orgLabel + "<br><small>scope: " + (user.billing_scope || "default") + "</small></td>" +
                 "<td>" +
                 "<div class='user-action-toolbar' data-uid='" + user.uid + "' data-email='" + (user.email || user.uid) + "' data-org-id='" + (user.org_id || "") + "' data-billing-scope='" + (user.billing_scope || "") + "'>" +
                 "<button type='button' class='user-action-btn icon-only' aria-label='Approve user " + (user.email || user.uid) + "' title='Approve user' data-action='approve' data-uid='" + user.uid + "'" + (approveDisabled ? " disabled data-static-disabled='true'" : "") + "><span class='user-action-icon'>&#10003;</span></button>" +
@@ -502,12 +519,13 @@
             requestsBody.innerHTML = "";
             (data.pending_requests || []).forEach(function (req) {
                 const tr = document.createElement("tr");
+                const suggestedOrgLabel = organizationLabelForId(req.suggested_org_id);
                 tr.innerHTML =
                     "<td>" + (req.email || "") + "</td>" +
                     "<td>" + (req.requested_name || "") + "</td>" +
                     "<td>" + (req.requested_organization || "") + "</td>" +
                     "<td>" + (req.how_heard_about_us || "") + "</td>" +
-                    "<td>" + (req.suggested_org_id || "none") + "</td>" +
+                    "<td>" + (req.suggested_org_id ? suggestedOrgLabel : "none") + "</td>" +
                     "<td><button data-action='approve-request' data-request-id='" + req.request_id + "' data-email='" + req.email + "'>Approve</button> <button data-action='reject-request' data-request-id='" + req.request_id + "'>Reject</button></td>";
                 requestsBody.appendChild(tr);
             });

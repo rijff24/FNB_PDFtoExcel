@@ -87,6 +87,22 @@
         </section>
     </main>
 
+    <div id="firstUseBillingModal" class="modal-overlay first-use-billing-modal" hidden role="dialog" aria-modal="true" aria-labelledby="firstUseBillingTitle">
+        <div class="modal-card">
+            <h2 id="firstUseBillingTitle">Before your first Statement Review</h2>
+            <p id="firstUseBillingText">
+                This is your first time using Statement Review for this billing pool this month.
+            </p>
+            <p class="status">
+                You can continue now or open the detailed billing page to review the pricing formula first.
+            </p>
+            <div class="button-row">
+                <button id="firstUseContinueBtn" type="button">Continue</button>
+                <a id="firstUseBillingLink" href="/billing" class="button-secondary">Open billing</a>
+            </div>
+        </div>
+    </div>
+
     <script src="/static/firebase-auth.js"></script>
 </body>
 </html>

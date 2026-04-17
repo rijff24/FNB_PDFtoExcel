@@ -468,6 +468,19 @@ def list_organizations(limit: int = 200) -> list[dict[str, Any]]:
     return out
 
 
+def get_organization(org_id: str) -> dict[str, Any] | None:
+    cleaned = str(org_id or "").strip()
+    if not cleaned:
+        return None
+    client = _client()
+    snap = client.collection(ORGS_COLLECTION).document(cleaned).get()
+    if not snap.exists:
+        return None
+    row = snap.to_dict() or {}
+    row.setdefault("org_id", snap.id)
+    return row
+
+
 def update_organization(org_id: str, *, name: str | None = None, domains: list[str] | None = None, active: bool | None = None) -> None:
     client = _client()
     payload: dict[str, Any] = {"updated_at": utcnow()}

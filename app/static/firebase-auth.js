@@ -9207,8 +9207,9 @@
       }
       var auth = getAuth(app);
       var googleProvider = new GoogleAuthProvider();
-      var BILLING_CACHE_KEY_PREFIX = "billingDataCacheV3";
+      var BILLING_CACHE_KEY_PREFIX = "billingDataCacheV4";
       var BILLING_CACHE_TTL_MS = 12e4;
+      var FIRST_USE_BILLING_ACK_PREFIX = "statementReviewFirstUseBillingAck";
       var bootstrapInFlight = null;
       var homeRevealDone = false;
       var authBootstrapEpoch = 0;
@@ -9359,6 +9360,87 @@
           maximumFractionDigits: 2
         }).format(Number(value || 0));
       }
+      function billingMonthFromData(data) {
+        return String(data && data.report && data.report.month || (/* @__PURE__ */ new Date()).toISOString().slice(0, 7).replace("-", ""));
+      }
+      function billingAckKey(userId, data) {
+        const pricing = data && data.pricing || {};
+        const poolKey = String(pricing.pool_id || pricing.pool_label || "pool");
+        return `${FIRST_USE_BILLING_ACK_PREFIX}:${String(userId || "anonymous")}:${billingMonthFromData(data)}:${poolKey}`;
+      }
+      function hasAcknowledgedFirstUseBilling(userId, data) {
+        try {
+          return localStorage.getItem(billingAckKey(userId, data)) === "1";
+        } catch (_err) {
+          return false;
+        }
+      }
+      function acknowledgeFirstUseBilling(userId, data) {
+        try {
+          localStorage.setItem(billingAckKey(userId, data), "1");
+        } catch (_err) {
+        }
+      }
+      function isFirstBillingPoolUse(data) {
+        if (!data || data.billing_enabled === false) return false;
+        const rollup = data.pool_rollup || data.report && data.report.rollup || {};
+        const ocrDocs = Number(rollup.total_documents || rollup.total_statements || 0);
+        const nonOcrDocs = Number(rollup.total_non_ocr_documents || 0);
+        const eventCount = Number(rollup.event_count || 0);
+        const totalBillable = Number(rollup.total_billable || 0);
+        return ocrDocs + nonOcrDocs === 0 && eventCount === 0 && totalBillable === 0;
+      }
+      async function getBillingDataForUser(user) {
+        const cached = readBillingCache(user.uid);
+        if (cached) return cached;
+        const resp = await apiFetch("/billing/data", {}, user);
+        if (!resp.ok) return null;
+        const payload = await resp.json();
+        writeBillingCache(user.uid, payload);
+        return payload;
+      }
+      function showFirstUseBillingDialog(data, user) {
+        const modal = $("firstUseBillingModal");
+        const body = $("firstUseBillingText");
+        const continueBtn = $("firstUseContinueBtn");
+        const billingLink = $("firstUseBillingLink");
+        if (!modal || !body || !continueBtn || !billingLink) return Promise.resolve(true);
+        const pricing = data.pricing || {};
+        const poolLabel = String(pricing.pool_label || "your billing pool");
+        const monthlyCost = formatRand(Number(pricing.monthly_platform_cost_zar || 0));
+        body.textContent = "This is the first Statement Review for " + poolLabel + " this month. A monthly platform cost of " + monthlyCost + " starts being allocated on first successful use. This is the website operating cost divided across active documents in your organization, so your estimated share can change as other users process statements.";
+        return new Promise((resolve) => {
+          const previousOverflow = document.body.style.overflow;
+          function close(result) {
+            modal.hidden = true;
+            document.body.style.overflow = previousOverflow;
+            continueBtn.removeEventListener("click", onContinue);
+            billingLink.removeEventListener("click", onBilling);
+            modal.removeEventListener("keydown", onKeyDown);
+            resolve(result);
+          }
+          function onContinue() {
+            acknowledgeFirstUseBilling(user.uid, data);
+            close(true);
+          }
+          function onBilling() {
+            acknowledgeFirstUseBilling(user.uid, data);
+            close(false);
+          }
+          function onKeyDown(event) {
+            if (event.key === "Escape") {
+              event.preventDefault();
+              close(false);
+            }
+          }
+          continueBtn.addEventListener("click", onContinue);
+          billingLink.addEventListener("click", onBilling);
+          modal.addEventListener("keydown", onKeyDown);
+          modal.hidden = false;
+          document.body.style.overflow = "hidden";
+          setTimeout(() => continueBtn.focus(), 0);
+        });
+      }
       async function signInWithGoogle() {
         setStatus("Signing in with Google...");
         await signInWithPopup(auth, googleProvider);
@@ -9453,6 +9535,16 @@
         const selectedBank = normalizeBankOption(bankSelect ? bankSelect.value : "fnb");
         formData.set("bank", ENABLED_BANK_OPTIONS.has(selectedBank) ? selectedBank : "fnb");
         persistBankSelection();
+        $("extractStatus").textContent = "Checking billing...";
+        const billingData = await getBillingDataForUser(user);
+        if (billingData && isFirstBillingPoolUse(billingData) && !hasAcknowledgedFirstUseBilling(user.uid, billingData)) {
+          const shouldContinue = await showFirstUseBillingDialog(billingData, user);
+          if (!shouldContinue) {
+            $("extractStatus").textContent = "";
+            window.location.href = "/billing";
+            return;
+          }
+        }
         $("extractStatus").textContent = "Preparing preview...";
         const resp = await apiFetchWithCsrf("/extract/preview", {
           method: "POST",

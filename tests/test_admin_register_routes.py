@@ -116,6 +116,27 @@ def test_admin_split_endpoints_success(monkeypatch) -> None:
     assert client.get("/admin/usage/summary", headers={"Authorization": "Bearer token"}).status_code == 200
 
 
+def test_admin_users_include_org_name(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "app.routes.admin.authenticate_request",
+        lambda _auth, path, require_admin=False, request=None: AuthorizedUser(email="admin@example.com", uid="admin-org-name"),
+    )
+    monkeypatch.setattr(
+        "app.routes.admin.list_users",
+        lambda limit=500: [{"uid": "u1", "email": "user@example.com", "org_id": "o1"}],
+    )
+    monkeypatch.setattr(
+        "app.routes.admin.list_organizations",
+        lambda: [{"org_id": "o1", "name": "Swan Computing"}],
+    )
+
+    client = TestClient(app)
+    response = client.get("/admin/users", headers={"Authorization": "Bearer token"})
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["items"][0]["org_name"] == "Swan Computing"
+
+
 def test_admin_approve_request_auto_creates_firebase_user(monkeypatch) -> None:
     monkeypatch.setattr(
         "app.routes.admin.authenticate_request_with_mode",
